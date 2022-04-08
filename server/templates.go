@@ -292,6 +292,9 @@ func (t *templates) password(r *http.Request, w http.ResponseWriter, postURL, la
 		Invalid        bool
 		ReqPath        string
 	}{postURL, backLink, lastUsername, usernamePrompt, lastWasInvalid, r.URL.Path}
+	if lastWasInvalid {
+		w.WriteHeader(http.StatusUnauthorized)
+	}
 	return renderTemplate(w, t.passwordTmpl, data)
 }
 
