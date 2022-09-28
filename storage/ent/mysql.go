@@ -153,6 +153,5 @@ func (m *MySQL) makeTLSConfig() error {
 		cfg.Certificates = clientCert
 	}
 
-	mysql.RegisterTLSConfig(mysqlSSLCustom, cfg)
-	return nil
+	return mysql.RegisterTLSConfig(mysqlSSLCustom, cfg)
 }
