@@ -6,6 +6,7 @@ require (
 	github.com/AppsFlyer/go-sundheit v0.3.1
 	github.com/beevik/etree v1.1.0
 	github.com/coreos/go-oidc/v3 v3.0.0
+	github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e // indirect
 	github.com/dexidp/dex/api/v2 v2.0.0
 	github.com/felixge/httpsnoop v1.0.1
 	github.com/ghodss/yaml v1.0.0
@@ -23,7 +24,7 @@ require (
 	github.com/prometheus/client_golang v1.10.0
 	github.com/russellhaering/goxmldsig v1.1.0
 	github.com/sirupsen/logrus v1.8.1
-	github.com/spf13/cobra v1.1.3
+	github.com/spf13/cobra v1.7.0
 	github.com/stretchr/testify v1.7.0
 	go.etcd.io/etcd/client/v3 v3.5.0-alpha.0
 	go.etcd.io/etcd/pkg/v3 v3.5.0-alpha.0
@@ -34,6 +35,7 @@ require (
 	google.golang.org/grpc v1.36.1
 	google.golang.org/protobuf v1.26.0
 	gopkg.in/square/go-jose.v2 v2.5.1
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 	sigs.k8s.io/testing_frameworks v0.1.2
 )
 
