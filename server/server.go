@@ -118,26 +118,26 @@ type WebConfig struct {
 	//   * static - Static static served at "( issuer URL )/static".
 	//   * templates - HTML templates controlled by dex.
 	//   * themes/(theme) - Static static served at "( issuer URL )/theme".
-	Dir string
+	Dir string `json:"dir,omitempty"`
 
 	// Alternative way to programmatically configure static web assets.
 	// If Dir is specified, WebFS is ignored.
 	// It's expected to contain the same files and directories as mentioned above.
 	//
 	// Note: this is experimental. Might get removed without notice!
-	WebFS fs.FS
+	WebFS fs.FS `json:"-"`
 
 	// Defaults to "( issuer URL )/theme/logo.png"
-	LogoURL string
+	LogoURL string `json:"logoURL,omitempty"`
 
 	// Defaults to "dex"
-	Issuer string
+	Issuer string `json:"issuer" jsonschema:"default=dex"`
 
 	// Defaults to "light"
-	Theme string
+	Theme string `json:"theme" jsonschema:"default=light"`
 
 	// Map of extra values passed into the templates
-	Extra map[string]string
+	Extra map[string]string `json:"extra,omitempty"`
 }
 
 func value(val, defaultValue time.Duration) time.Duration {

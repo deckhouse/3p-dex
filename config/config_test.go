@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"os"
@@ -6,11 +6,11 @@ import (
 
 	"github.com/ghodss/yaml"
 	"github.com/kylelemons/godebug/pretty"
+	"github.com/sirupsen/logrus"
 
 	"github.com/dexidp/dex/connector/mock"
 	"github.com/dexidp/dex/connector/oidc"
 	"github.com/dexidp/dex/server"
-	"github.com/dexidp/dex/storage"
 	"github.com/dexidp/dex/storage/sql"
 )
 
@@ -37,14 +37,14 @@ func TestValidConfiguration(t *testing.T) {
 			},
 		},
 	}
-	if err := configuration.Validate(); err != nil {
+	if err := configuration.Validate(logrus.New()); err != nil {
 		t.Fatalf("this configuration should have been valid: %v", err)
 	}
 }
 
 func TestInvalidConfiguration(t *testing.T) {
 	configuration := Config{}
-	err := configuration.Validate()
+	err := configuration.Validate(logrus.New())
 	if err == nil {
 		t.Fatal("this configuration should be invalid")
 	}
@@ -152,7 +152,7 @@ logger:
 				"foo": "bar",
 			},
 		},
-		StaticClients: []storage.Client{
+		StaticClients: []Client{
 			{
 				ID:     "example-app",
 				Secret: "ZXhhbXBsZS1hcHAtc2VjcmV0",
@@ -189,16 +189,16 @@ logger:
 			},
 		},
 		EnablePasswordDB: true,
-		StaticPasswords: []password{
+		StaticPasswords: []Password{
 			{
 				Email:    "admin@example.com",
-				Hash:     []byte("$2a$10$33EMT0cVYVlPy6WAMCLsceLYjWhuHpbz5yuZxu/GAFj03J9Lytjuy"),
+				Hash:     "$2a$10$33EMT0cVYVlPy6WAMCLsceLYjWhuHpbz5yuZxu/GAFj03J9Lytjuy",
 				Username: "admin",
 				UserID:   "08a8684b-db88-4b73-90a9-3cd1661f5466",
 			},
 			{
 				Email:    "foo@example.com",
-				Hash:     []byte("$2a$10$33EMT0cVYVlPy6WAMCLsceLYjWhuHpbz5yuZxu/GAFj03J9Lytjuy"),
+				Hash:     "$2a$10$33EMT0cVYVlPy6WAMCLsceLYjWhuHpbz5yuZxu/GAFj03J9Lytjuy",
 				Username: "foo",
 				UserID:   "41331323-6f44-45e6-b3b9-2c4b60c02be5",
 			},
@@ -364,7 +364,7 @@ logger:
 				"foo": "bar",
 			},
 		},
-		StaticClients: []storage.Client{
+		StaticClients: []Client{
 			{
 				ID:     "example-app",
 				Secret: "ZXhhbXBsZS1hcHAtc2VjcmV0",
@@ -397,16 +397,16 @@ logger:
 			},
 		},
 		EnablePasswordDB: true,
-		StaticPasswords: []password{
+		StaticPasswords: []Password{
 			{
 				Email:    "admin@example.com",
-				Hash:     []byte("$2a$10$33EMT0cVYVlPy6WAMCLsceLYjWhuHpbz5yuZxu/GAFj03J9Lytjuy"),
+				Hash:     "$2a$10$33EMT0cVYVlPy6WAMCLsceLYjWhuHpbz5yuZxu/GAFj03J9Lytjuy",
 				Username: "admin",
 				UserID:   "08a8684b-db88-4b73-90a9-3cd1661f5466",
 			},
 			{
 				Email:    "foo@example.com",
-				Hash:     []byte("$2a$10$33EMT0cVYVlPy6WAMCLsceLYjWhuHpbz5yuZxu/GAFj03J9Lytjuy"),
+				Hash:     "$2a$10$33EMT0cVYVlPy6WAMCLsceLYjWhuHpbz5yuZxu/GAFj03J9Lytjuy",
 				Username: "foo",
 				UserID:   "41331323-6f44-45e6-b3b9-2c4b60c02be5",
 			},

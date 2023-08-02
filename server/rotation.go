@@ -191,7 +191,8 @@ type RefreshTokenPolicy struct {
 }
 
 func NewRefreshTokenPolicy(logger log.Logger, rotation bool, validIfNotUsedFor, absoluteLifetime, reuseInterval string) (*RefreshTokenPolicy, error) {
-	r := RefreshTokenPolicy{now: time.Now, logger: logger}
+	r := RefreshTokenPolicy{
+		now: time.Now, logger: logger}
 	var err error
 
 	if validIfNotUsedFor != "" {
