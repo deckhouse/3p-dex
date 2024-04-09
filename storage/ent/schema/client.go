@@ -3,18 +3,21 @@ package schema
 import (
 	"entgo.io/ent"
 	"entgo.io/ent/schema/field"
+
+	"github.com/dexidp/dex/storage"
 )
 
 /* Original SQL table:
 create table client
 (
-    id            text    not null  primary key,
-    secret        text    not null,
-    redirect_uris blob    not null,
-    trusted_peers blob    not null,
-    public        integer not null,
-    name          text    not null,
-    logo_url      text    not null
+    id             text    not null  primary key,
+    secret         text    not null,
+    redirect_uris  blob    not null,
+    trusted_peers  blob    not null,
+    public         integer not null,
+    name           text    not null,
+    logo_url       text    not null
+	claim_policies blob    not null
 );
 */
 
@@ -45,6 +48,8 @@ func (OAuth2Client) Fields() []ent.Field {
 		field.Text("logo_url").
 			SchemaType(textSchema).
 			NotEmpty(),
+		field.JSON("claim_policies", []storage.ClaimPolicy{}).
+			Optional(),
 	}
 }
 

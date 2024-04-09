@@ -9,6 +9,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/dexidp/dex/storage"
 	"github.com/dexidp/dex/storage/ent/db/oauth2client"
 )
 
@@ -28,8 +29,10 @@ type OAuth2Client struct {
 	// Name holds the value of the "name" field.
 	Name string `json:"name,omitempty"`
 	// LogoURL holds the value of the "logo_url" field.
-	LogoURL      string `json:"logo_url,omitempty"`
-	selectValues sql.SelectValues
+	LogoURL string `json:"logo_url,omitempty"`
+	// ClaimPolicies holds the value of the "claim_policies" field.
+	ClaimPolicies []storage.ClaimPolicy `json:"claim_policies,omitempty"`
+	selectValues  sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -37,7 +40,7 @@ func (*OAuth2Client) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case oauth2client.FieldRedirectUris, oauth2client.FieldTrustedPeers:
+		case oauth2client.FieldRedirectUris, oauth2client.FieldTrustedPeers, oauth2client.FieldClaimPolicies:
 			values[i] = new([]byte)
 		case oauth2client.FieldPublic:
 			values[i] = new(sql.NullBool)
@@ -104,6 +107,14 @@ func (o *OAuth2Client) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				o.LogoURL = value.String
 			}
+		case oauth2client.FieldClaimPolicies:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field claim_policies", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &o.ClaimPolicies); err != nil {
+					return fmt.Errorf("unmarshal field claim_policies: %w", err)
+				}
+			}
 		default:
 			o.selectValues.Set(columns[i], values[i])
 		}
@@ -157,6 +168,9 @@ func (o *OAuth2Client) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("logo_url=")
 	builder.WriteString(o.LogoURL)
+	builder.WriteString(", ")
+	builder.WriteString("claim_policies=")
+	builder.WriteString(fmt.Sprintf("%v", o.ClaimPolicies))
 	builder.WriteByte(')')
 	return builder.String()
 }

@@ -85,6 +85,32 @@ func (d dexAPI) CreateClient(ctx context.Context, req *api.CreateClientReq) (*ap
 		Name:         req.Client.Name,
 		LogoURL:      req.Client.LogoUrl,
 	}
+
+	if len(req.Client.ClaimPolicies) > 0 {
+		c.ClaimPolicies = make([]storage.ClaimPolicy, 0, len(req.Client.ClaimPolicies))
+		for _, p := range req.Client.ClaimPolicies {
+			if p == nil {
+				continue
+			}
+
+			if v := p.GetValidate(); v != nil {
+				c.ClaimPolicies = append(c.ClaimPolicies, storage.ClaimPolicy{
+					Validate: &storage.ClaimValidatePolicy{
+						Expr:    v.Expr,
+						Message: v.Message,
+					},
+				})
+			} else if m := p.GetMutate(); m != nil {
+				c.ClaimPolicies = append(c.ClaimPolicies, storage.ClaimPolicy{
+					Mutate: &storage.ClaimMutatePolicy{
+						Expr:  m.Expr,
+						Claim: m.Claim,
+					},
+				})
+			}
+		}
+	}
+
 	if err := d.s.CreateClient(ctx, c); err != nil {
 		if err == storage.ErrAlreadyExists {
 			return &api.CreateClientResp{AlreadyExists: true}, nil
@@ -116,6 +142,32 @@ func (d dexAPI) UpdateClient(ctx context.Context, req *api.UpdateClientReq) (*ap
 		if req.LogoUrl != "" {
 			old.LogoURL = req.LogoUrl
 		}
+
+		if len(req.ClaimPolicies) > 0 {
+			old.ClaimPolicies = make([]storage.ClaimPolicy, 0, len(req.ClaimPolicies))
+			for _, p := range req.ClaimPolicies {
+				if p == nil {
+					continue
+				}
+
+				if v := p.GetValidate(); v != nil {
+					old.ClaimPolicies = append(old.ClaimPolicies, storage.ClaimPolicy{
+						Validate: &storage.ClaimValidatePolicy{
+							Expr:    v.Expr,
+							Message: v.Message,
+						},
+					})
+				} else if m := p.GetMutate(); m != nil {
+					old.ClaimPolicies = append(old.ClaimPolicies, storage.ClaimPolicy{
+						Mutate: &storage.ClaimMutatePolicy{
+							Expr:  m.Expr,
+							Claim: m.Claim,
+						},
+					})
+				}
+			}
+		}
+
 		return old, nil
 	})
 	if err != nil {

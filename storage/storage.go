@@ -171,6 +171,23 @@ type Client struct {
 	// Name and LogoURL used when displaying this client to the end user.
 	Name    string `json:"name" yaml:"name"`
 	LogoURL string `json:"logoURL" yaml:"logoURL"`
+
+	ClaimPolicies []ClaimPolicy `json:"claimPolicies,omitempty" yaml:"claimPolicies,omitempty"`
+}
+
+type ClaimPolicy struct {
+	Validate *ClaimValidatePolicy `json:"validate,omitempty"`
+	Mutate   *ClaimMutatePolicy   `json:"mutate,omitempty"`
+}
+
+type ClaimValidatePolicy struct {
+	Expr    string `json:"expr"`
+	Message string `json:"message,omitempty"`
+}
+
+type ClaimMutatePolicy struct {
+	Claim string `json:"claim"`
+	Expr  string `json:"expr"`
 }
 
 // Claims represents the ID Token claims supported by the server.

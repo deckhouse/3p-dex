@@ -16,6 +16,7 @@ func (d *Database) CreateClient(ctx context.Context, client storage.Client) erro
 		SetLogoURL(client.LogoURL).
 		SetRedirectUris(client.RedirectURIs).
 		SetTrustedPeers(client.TrustedPeers).
+		SetClaimPolicies(client.ClaimPolicies).
 		Save(ctx)
 	if err != nil {
 		return convertDBError("create oauth2 client: %w", err)
@@ -79,6 +80,7 @@ func (d *Database) UpdateClient(id string, updater func(old storage.Client) (sto
 		SetLogoURL(newClient.LogoURL).
 		SetRedirectUris(newClient.RedirectURIs).
 		SetTrustedPeers(newClient.TrustedPeers).
+		SetClaimPolicies(client.ClaimPolicies).
 		Save(context.TODO())
 	if err != nil {
 		return rollback(tx, "update client uploading: %w", err)

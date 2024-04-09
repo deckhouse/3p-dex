@@ -19,9 +19,11 @@ import (
 	"time"
 
 	gosundheit "github.com/AppsFlyer/go-sundheit"
+	"github.com/dexidp/dex/policy"
 	"github.com/felixge/httpsnoop"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/mitchellh/hashstructure/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/bcrypt"
 
@@ -55,6 +57,94 @@ const LocalConnector = "local"
 type Connector struct {
 	ResourceVersion string
 	Connector       connector.Connector
+}
+
+type policyStoreIndex struct {
+	PolicyHash uint64
+	ClientID   string
+}
+
+type policyStore struct {
+	mu          sync.RWMutex
+	store       map[policyStoreIndex][]policy.ClaimPolicy
+	clientIndex map[string]policyStoreIndex
+}
+
+func newPolicyStore() policyStore {
+	return policyStore{
+		clientIndex: make(map[string]policyStoreIndex),
+		store:       make(map[policyStoreIndex][]policy.ClaimPolicy),
+	}
+}
+
+func (p *policyStore) Add(clientID string, policies []storage.ClaimPolicy) ([]policy.ClaimPolicy, error) {
+	hash, err := hashstructure.Hash(policies, hashstructure.FormatV2, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	index := policyStoreIndex{
+		ClientID:   clientID,
+		PolicyHash: hash,
+	}
+
+	programs, err := policy.Compile(policies)
+	if err != nil {
+		return nil, err
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.clientIndex[clientID] = index
+	p.store[index] = programs
+	return programs, nil
+}
+
+func (p *policyStore) Get(clientID string) ([]policy.ClaimPolicy, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	index, ok := p.clientIndex[clientID]
+	if !ok {
+		return nil, fmt.Errorf("no policies found for client %s", clientID)
+	}
+
+	policies, ok := p.store[index]
+	if !ok {
+		return nil, fmt.Errorf("no policies found for client %s", clientID)
+	}
+
+	return policies, nil
+}
+
+func (p *policyStore) HasPolicy(clientID string, policies []storage.ClaimPolicy) bool {
+	p.mu.RLock()
+	_, ok := p.clientIndex[clientID]
+	p.mu.RUnlock()
+
+	if !ok {
+		return false
+	}
+
+	// Deep inspection of the policies to determine if they are the same.
+
+	hash, err := hashstructure.Hash(policies, hashstructure.FormatV2, nil)
+	if err != nil {
+		// todo: log error
+		return false
+	}
+
+	index := policyStoreIndex{
+		ClientID:   clientID,
+		PolicyHash: hash,
+	}
+
+	p.mu.RLock()
+	_, ok = p.store[index]
+	p.mu.RUnlock()
+
+	return ok
 }
 
 // Config holds the server's configuration options.
@@ -161,6 +251,8 @@ type Server struct {
 	mu sync.Mutex
 	// Map of connector IDs to connectors.
 	connectors map[string]Connector
+
+	policyStore policyStore
 
 	storage storage.Storage
 
@@ -294,6 +386,7 @@ func newServer(ctx context.Context, c Config, rotationStrategy rotationStrategy)
 		issuerURL:              *issuerURL,
 		connectors:             make(map[string]Connector),
 		storage:                newKeyCacher(c.Storage, now),
+		policyStore:            newPolicyStore(),
 		supportedResponseTypes: supportedRes,
 		supportedGrantTypes:    supportedGrants,
 		idTokensValidFor:       value(c.IDTokensValidFor, 24*time.Hour),

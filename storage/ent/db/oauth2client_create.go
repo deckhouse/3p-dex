@@ -9,6 +9,7 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/dexidp/dex/storage"
 	"github.com/dexidp/dex/storage/ent/db/oauth2client"
 )
 
@@ -52,6 +53,12 @@ func (oc *OAuth2ClientCreate) SetName(s string) *OAuth2ClientCreate {
 // SetLogoURL sets the "logo_url" field.
 func (oc *OAuth2ClientCreate) SetLogoURL(s string) *OAuth2ClientCreate {
 	oc.mutation.SetLogoURL(s)
+	return oc
+}
+
+// SetClaimPolicies sets the "claim_policies" field.
+func (oc *OAuth2ClientCreate) SetClaimPolicies(sp []storage.ClaimPolicy) *OAuth2ClientCreate {
+	oc.mutation.SetClaimPolicies(sp)
 	return oc
 }
 
@@ -185,6 +192,10 @@ func (oc *OAuth2ClientCreate) createSpec() (*OAuth2Client, *sqlgraph.CreateSpec)
 	if value, ok := oc.mutation.LogoURL(); ok {
 		_spec.SetField(oauth2client.FieldLogoURL, field.TypeString, value)
 		_node.LogoURL = value
+	}
+	if value, ok := oc.mutation.ClaimPolicies(); ok {
+		_spec.SetField(oauth2client.FieldClaimPolicies, field.TypeJSON, value)
+		_node.ClaimPolicies = value
 	}
 	return _node, _spec
 }

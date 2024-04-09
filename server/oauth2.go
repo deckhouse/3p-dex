@@ -17,10 +17,12 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/dexidp/dex/policy"
 	"github.com/go-jose/go-jose/v4"
 
 	"github.com/dexidp/dex/connector"
@@ -302,6 +304,116 @@ type federatedIDClaims struct {
 	UserID      string `json:"user_id,omitempty"`
 }
 
+func (c *idTokenClaims) ToMap() map[string]interface{} {
+	result := make(map[string]interface{})
+	result["iss"] = c.Issuer
+	result["sub"] = c.Subject
+	result["aud"] = c.Audience
+	result["exp"] = c.Expiry
+	result["iat"] = c.IssuedAt
+
+	if c.AuthorizingParty != "" {
+		result["azp"] = c.AuthorizingParty
+	}
+	if c.Nonce != "" {
+		result["nonce"] = c.Nonce
+	}
+	if c.AccessTokenHash != "" {
+		result["at_hash"] = c.AccessTokenHash
+	}
+	if c.CodeHash != "" {
+		result["c_hash"] = c.CodeHash
+	}
+	if c.Email != "" {
+		result["email"] = c.Email
+	}
+	if c.EmailVerified != nil {
+		result["email_verified"] = c.EmailVerified
+	}
+	if c.Groups != nil {
+		result["groups"] = c.Groups
+	}
+	if c.Name != "" {
+		result["name"] = c.Name
+	}
+	if c.PreferredUsername != "" {
+		result["preferred_username"] = c.PreferredUsername
+	}
+
+	if c.FederatedIDClaims != nil {
+		federatedClaims := make(map[string]interface{})
+		if c.FederatedIDClaims.ConnectorID != "" {
+			federatedClaims["connector_id"] = c.FederatedIDClaims.ConnectorID
+		}
+		if c.FederatedIDClaims.UserID != "" {
+			federatedClaims["user_id"] = c.FederatedIDClaims.UserID
+		}
+		if len(federatedClaims) > 0 {
+			result["federated_claims"] = federatedClaims
+		}
+	}
+	return result
+}
+
+func idTokenClaimsFromMap(input map[string]interface{}) idTokenClaims {
+	claims := idTokenClaims{}
+	for key, value := range input {
+		switch key {
+		case "iss":
+			claims.Issuer = value.(string)
+		case "sub":
+			claims.Subject = value.(string)
+		case "aud":
+			switch v := value.(type) {
+			case string:
+				claims.Audience = []string{v}
+			case []interface{}:
+				for _, e := range v {
+					claims.Audience = append(claims.Audience, e.(string))
+				}
+			}
+		case "exp":
+			claims.Expiry = int64(value.(float64))
+		case "iat":
+			claims.IssuedAt = int64(value.(float64))
+		case "azp":
+			claims.AuthorizingParty = value.(string)
+		case "nonce":
+			claims.Nonce = value.(string)
+		case "at_hash":
+			claims.AccessTokenHash = value.(string)
+		case "c_hash":
+			claims.CodeHash = value.(string)
+		case "email":
+			claims.Email = value.(string)
+		case "email_verified":
+			claims.EmailVerified = value.(*bool)
+		case "groups":
+			claims.Groups = make([]string, len(value.([]interface{})))
+			for i, e := range value.([]interface{}) {
+				claims.Groups[i] = e.(string)
+			}
+		case "name":
+			claims.Name = value.(string)
+		case "preferred_username":
+			claims.PreferredUsername = value.(string)
+		case "federated_claims":
+			claims.FederatedIDClaims = &federatedIDClaims{}
+			federatedClaims := value.(map[string]interface{})
+			for k, v := range federatedClaims {
+				switch k {
+				case "connector_id":
+					claims.FederatedIDClaims.ConnectorID = v.(string)
+				case "user_id":
+					claims.FederatedIDClaims.UserID = v.(string)
+				}
+			}
+		}
+	}
+	return claims
+
+}
+
 func (s *Server) newAccessToken(clientID string, claims storage.Claims, scopes []string, nonce, connID string) (accessToken string, expiry time.Time, err error) {
 	return s.newIDToken(clientID, claims, scopes, nonce, storage.NewID(), "", connID)
 }
@@ -362,6 +474,21 @@ func (s *Server) newIDToken(clientID string, claims storage.Claims, scopes []str
 		tok.CodeHash = cHash
 	}
 
+	if len(tok.Audience) == 0 {
+		// Client didn't ask for cross client audience. Set the current
+		// client as the audience.
+		tok.Audience = audience{clientID}
+	} else {
+		// Client asked for cross client audience:
+		// if the current client was not requested explicitly
+		if !tok.Audience.contains(clientID) {
+			// by default it becomes one of entries in Audience
+			tok.Audience = append(tok.Audience, clientID)
+		}
+		// The current client becomes the authorizing party.
+		tok.AuthorizingParty = clientID
+	}
+
 	for _, scope := range scopes {
 		switch {
 		case scope == scopeEmail:
@@ -396,22 +523,55 @@ func (s *Server) newIDToken(clientID string, claims storage.Claims, scopes []str
 		}
 	}
 
-	if len(tok.Audience) == 0 {
-		// Client didn't ask for cross client audience. Set the current
-		// client as the audience.
-		tok.Audience = audience{clientID}
-	} else {
-		// Client asked for cross client audience:
-		// if the current client was not requested explicitly
-		if !tok.Audience.contains(clientID) {
-			// by default it becomes one of entries in Audience
-			tok.Audience = append(tok.Audience, clientID)
-		}
-		// The current client becomes the authorizing party.
-		tok.AuthorizingParty = clientID
+	client, err := s.storage.GetClient(clientID)
+	if err != nil {
+		return "", expiry, err
 	}
 
-	payload, err := json.Marshal(tok)
+	var payload []byte
+
+	if len(client.ClaimPolicies) > 0 {
+		var compiled []policy.ClaimPolicy
+		if s.policyStore.HasPolicy(clientID, client.ClaimPolicies) {
+			compiled, err = s.policyStore.Get(clientID)
+			if err != nil {
+				return "", expiry, err
+			}
+		} else {
+			compiled, err = s.policyStore.Add(clientID, client.ClaimPolicies)
+			if err != nil {
+				return "", expiry, err
+			}
+		}
+
+		claimsMap := tok.ToMap()
+		for _, pol := range compiled {
+			err := pol.Apply(claimsMap)
+			if err != nil {
+				return "", expiry, fmt.Errorf("failed to evaluate policy: %v", err)
+			}
+		}
+
+		tok = idTokenClaimsFromMap(claimsMap)
+
+		// Validate that after mutations there are not claims that are not allowed by scopes
+		if !slices.Contains(scopes, "email") {
+			tok.Email = ""
+			tok.EmailVerified = nil
+		}
+		if !slices.Contains(scopes, "groups") {
+			tok.Groups = nil
+		}
+		if !slices.Contains(scopes, "profile") {
+			tok.Name = ""
+			tok.PreferredUsername = ""
+		}
+		if !slices.Contains(scopes, "federated:id") {
+			tok.FederatedIDClaims = nil
+		}
+	}
+
+	payload, err = json.Marshal(tok)
 	if err != nil {
 		return "", expiry, fmt.Errorf("could not serialize claims: %v", err)
 	}

@@ -128,6 +128,17 @@ staticClients:
   - 'http://127.0.0.1:5555/callback'
   name: 'Example App'
   secret: ZXhhbXBsZS1hcHAtc2VjcmV0
+  claimPolicies:
+    - validate:
+        expr: 'claims.email == "admin@example.com"'
+        message: "email must be admin@example.com"
+    - mutate:
+        claim: "name"
+        expr: 'claims.name + "-test"'
+    - mutate:
+        claim: "https://deckhouse.io/my-aud"
+        expr: '"kubernetes"'
+
 #  - id: example-device-client
 #    redirectURIs:
 #      - /device/callback

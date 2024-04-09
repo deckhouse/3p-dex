@@ -36,6 +36,7 @@ import (
 
 	"github.com/dexidp/dex/api/v2"
 	"github.com/dexidp/dex/pkg/log"
+	"github.com/dexidp/dex/policy"
 	"github.com/dexidp/dex/server"
 	"github.com/dexidp/dex/storage"
 )
@@ -214,6 +215,18 @@ func runServe(options serveOptions) error {
 				c.StaticClients[i].Secret = os.Getenv(client.SecretEnv)
 			}
 			logger.Infof("config static client: %s", client.Name)
+
+			// TODO(nabokihms): Save the result of the policy compilation in the client structure.
+			//   Currently, the result is discarded after validation.
+			//   This approach is used because clients can be created dynamically, necessitating runtime policy
+			//   compilation instead of during startup. However, since static clients are not created dynamically,
+			//   we can compile their policies at startup.
+			if len(client.ClaimPolicies) > 0 {
+				_, err := policy.Compile(client.ClaimPolicies)
+				if err != nil {
+					return fmt.Errorf("failed to compile token policies for client %q: %v", client.ID, err)
+				}
+			}
 		}
 		s = storage.WithStaticClients(s, c.StaticClients)
 	}

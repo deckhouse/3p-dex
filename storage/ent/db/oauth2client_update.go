@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
+	"github.com/dexidp/dex/storage"
 	"github.com/dexidp/dex/storage/ent/db/oauth2client"
 	"github.com/dexidp/dex/storage/ent/db/predicate"
 )
@@ -120,6 +121,24 @@ func (ou *OAuth2ClientUpdate) SetNillableLogoURL(s *string) *OAuth2ClientUpdate 
 	return ou
 }
 
+// SetClaimPolicies sets the "claim_policies" field.
+func (ou *OAuth2ClientUpdate) SetClaimPolicies(sp []storage.ClaimPolicy) *OAuth2ClientUpdate {
+	ou.mutation.SetClaimPolicies(sp)
+	return ou
+}
+
+// AppendClaimPolicies appends sp to the "claim_policies" field.
+func (ou *OAuth2ClientUpdate) AppendClaimPolicies(sp []storage.ClaimPolicy) *OAuth2ClientUpdate {
+	ou.mutation.AppendClaimPolicies(sp)
+	return ou
+}
+
+// ClearClaimPolicies clears the value of the "claim_policies" field.
+func (ou *OAuth2ClientUpdate) ClearClaimPolicies() *OAuth2ClientUpdate {
+	ou.mutation.ClearClaimPolicies()
+	return ou
+}
+
 // Mutation returns the OAuth2ClientMutation object of the builder.
 func (ou *OAuth2ClientUpdate) Mutation() *OAuth2ClientMutation {
 	return ou.mutation
@@ -217,6 +236,17 @@ func (ou *OAuth2ClientUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := ou.mutation.LogoURL(); ok {
 		_spec.SetField(oauth2client.FieldLogoURL, field.TypeString, value)
+	}
+	if value, ok := ou.mutation.ClaimPolicies(); ok {
+		_spec.SetField(oauth2client.FieldClaimPolicies, field.TypeJSON, value)
+	}
+	if value, ok := ou.mutation.AppendedClaimPolicies(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauth2client.FieldClaimPolicies, value)
+		})
+	}
+	if ou.mutation.ClaimPoliciesCleared() {
+		_spec.ClearField(oauth2client.FieldClaimPolicies, field.TypeJSON)
 	}
 	if n, err = sqlgraph.UpdateNodes(ctx, ou.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -327,6 +357,24 @@ func (ouo *OAuth2ClientUpdateOne) SetNillableLogoURL(s *string) *OAuth2ClientUpd
 	if s != nil {
 		ouo.SetLogoURL(*s)
 	}
+	return ouo
+}
+
+// SetClaimPolicies sets the "claim_policies" field.
+func (ouo *OAuth2ClientUpdateOne) SetClaimPolicies(sp []storage.ClaimPolicy) *OAuth2ClientUpdateOne {
+	ouo.mutation.SetClaimPolicies(sp)
+	return ouo
+}
+
+// AppendClaimPolicies appends sp to the "claim_policies" field.
+func (ouo *OAuth2ClientUpdateOne) AppendClaimPolicies(sp []storage.ClaimPolicy) *OAuth2ClientUpdateOne {
+	ouo.mutation.AppendClaimPolicies(sp)
+	return ouo
+}
+
+// ClearClaimPolicies clears the value of the "claim_policies" field.
+func (ouo *OAuth2ClientUpdateOne) ClearClaimPolicies() *OAuth2ClientUpdateOne {
+	ouo.mutation.ClearClaimPolicies()
 	return ouo
 }
 
@@ -457,6 +505,17 @@ func (ouo *OAuth2ClientUpdateOne) sqlSave(ctx context.Context) (_node *OAuth2Cli
 	}
 	if value, ok := ouo.mutation.LogoURL(); ok {
 		_spec.SetField(oauth2client.FieldLogoURL, field.TypeString, value)
+	}
+	if value, ok := ouo.mutation.ClaimPolicies(); ok {
+		_spec.SetField(oauth2client.FieldClaimPolicies, field.TypeJSON, value)
+	}
+	if value, ok := ouo.mutation.AppendedClaimPolicies(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauth2client.FieldClaimPolicies, value)
+		})
+	}
+	if ouo.mutation.ClaimPoliciesCleared() {
+		_spec.ClearField(oauth2client.FieldClaimPolicies, field.TypeJSON)
 	}
 	_node = &OAuth2Client{config: ouo.config}
 	_spec.Assign = _node.assignValues

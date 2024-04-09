@@ -298,4 +298,11 @@ var migrations = []migration{
 				add column hmac_key bytea;`,
 		},
 	},
+	{
+		stmts: []string{
+			`
+			alter table client
+				add column claim_policies bytea not null;`,
+		},
+	},
 }

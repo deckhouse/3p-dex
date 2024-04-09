@@ -472,7 +472,6 @@ func (c *ldapConnector) Login(ctx context.Context, s connector.Scopes, username,
 		user          ldap.Entry
 	)
 
-	username = ldap.EscapeFilter(username)
 	password = ldap.EscapeFilter(password)
 
 	err = c.do(ctx, func(conn *ldap.Conn) error {

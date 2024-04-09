@@ -251,6 +251,23 @@ type Client struct {
 
 	Name    string `json:"name,omitempty"`
 	LogoURL string `json:"logoURL,omitempty"`
+
+	ClaimPolicies []ClaimPolicy `json:"claimPolicies,omitempty"`
+}
+
+type ClaimPolicy struct {
+	Validate *ClaimValidatePolicy `json:"validate,omitempty"`
+	Mutate   *ClaimMutatePolicy   `json:"mutate,omitempty"`
+}
+
+type ClaimValidatePolicy struct {
+	Expr    string `json:"expr"`
+	Message string `json:"message,omitempty"`
+}
+
+type ClaimMutatePolicy struct {
+	Claim string `json:"claim"`
+	Expr  string `json:"expr"`
 }
 
 // ClientList is a list of Clients.
@@ -261,7 +278,7 @@ type ClientList struct {
 }
 
 func (cli *client) fromStorageClient(c storage.Client) Client {
-	return Client{
+	res := Client{
 		TypeMeta: k8sapi.TypeMeta{
 			Kind:       kindClient,
 			APIVersion: cli.apiVersion,
@@ -278,10 +295,32 @@ func (cli *client) fromStorageClient(c storage.Client) Client {
 		Name:         c.Name,
 		LogoURL:      c.LogoURL,
 	}
+
+	if len(c.ClaimPolicies) > 0 {
+		res.ClaimPolicies = make([]ClaimPolicy, len(c.ClaimPolicies))
+		for i, p := range c.ClaimPolicies {
+			if p.Validate != nil {
+				res.ClaimPolicies[i] = ClaimPolicy{
+					Validate: &ClaimValidatePolicy{
+						Expr:    p.Validate.Expr,
+						Message: p.Validate.Message,
+					},
+				}
+			} else if p.Mutate != nil {
+				res.ClaimPolicies[i] = ClaimPolicy{
+					Mutate: &ClaimMutatePolicy{
+						Claim: p.Mutate.Claim,
+						Expr:  p.Mutate.Expr,
+					},
+				}
+			}
+		}
+	}
+	return res
 }
 
 func toStorageClient(c Client) storage.Client {
-	return storage.Client{
+	res := storage.Client{
 		ID:           c.ID,
 		Secret:       c.Secret,
 		RedirectURIs: c.RedirectURIs,
@@ -290,6 +329,28 @@ func toStorageClient(c Client) storage.Client {
 		Name:         c.Name,
 		LogoURL:      c.LogoURL,
 	}
+
+	if len(c.ClaimPolicies) > 0 {
+		res.ClaimPolicies = make([]storage.ClaimPolicy, len(c.ClaimPolicies))
+		for i, p := range c.ClaimPolicies {
+			if p.Validate != nil {
+				res.ClaimPolicies[i] = storage.ClaimPolicy{
+					Validate: &storage.ClaimValidatePolicy{
+						Expr:    p.Validate.Expr,
+						Message: p.Validate.Message,
+					},
+				}
+			} else if p.Mutate != nil {
+				res.ClaimPolicies[i] = storage.ClaimPolicy{
+					Mutate: &storage.ClaimMutatePolicy{
+						Claim: p.Mutate.Claim,
+						Expr:  p.Mutate.Expr,
+					},
+				}
+			}
+		}
+	}
+	return res
 }
 
 // Claims is a mirrored struct from storage with JSON struct tags.

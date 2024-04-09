@@ -75,7 +75,7 @@ func toStorageAuthCode(a *db.AuthCode) storage.AuthCode {
 }
 
 func toStorageClient(c *db.OAuth2Client) storage.Client {
-	return storage.Client{
+	res := storage.Client{
 		ID:           c.ID,
 		Secret:       c.Secret,
 		RedirectURIs: c.RedirectUris,
@@ -84,6 +84,29 @@ func toStorageClient(c *db.OAuth2Client) storage.Client {
 		Name:         c.Name,
 		LogoURL:      c.LogoURL,
 	}
+
+	if len(c.ClaimPolicies) > 0 {
+		res.ClaimPolicies = make([]storage.ClaimPolicy, 0, len(c.ClaimPolicies))
+		for _, v := range c.ClaimPolicies {
+			if v.Validate != nil {
+				res.ClaimPolicies = append(res.ClaimPolicies, storage.ClaimPolicy{
+					Validate: &storage.ClaimValidatePolicy{
+						Expr:    v.Validate.Expr,
+						Message: v.Validate.Message,
+					},
+				})
+			} else if v.Mutate != nil {
+				res.ClaimPolicies = append(res.ClaimPolicies, storage.ClaimPolicy{
+					Mutate: &storage.ClaimMutatePolicy{
+						Expr:  v.Mutate.Expr,
+						Claim: v.Mutate.Claim,
+					},
+				})
+			}
+		}
+	}
+
+	return res
 }
 
 func toStorageConnector(c *db.Connector) storage.Connector {
