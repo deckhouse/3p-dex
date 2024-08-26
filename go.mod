@@ -26,6 +26,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.28
 	github.com/oklog/run v1.1.0
 	github.com/pkg/errors v0.9.1
+	github.com/pquerna/otp v1.4.0
 	github.com/prometheus/client_golang v1.22.0
 	github.com/russellhaering/goxmldsig v1.5.0
 	github.com/spf13/cobra v1.9.1
@@ -54,7 +55,6 @@ require (
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/bmatcuk/doublestar v1.3.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect

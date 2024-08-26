@@ -307,6 +307,8 @@ func runServe(options serveOptions) error {
 		PrometheusRegistry:         prometheusRegistry,
 		HealthChecker:              healthChecker,
 		ContinueOnConnectorFailure: featureflags.ContinueOnConnectorFailure.Enabled(),
+		TOTPIssuer:                 c.TOTP.Issuer,
+		TOTPConnectors:             c.TOTP.Connectors,
 	}
 	if c.Expiry.SigningKeys != "" {
 		signingKeys, err := time.ParseDuration(c.Expiry.SigningKeys)
