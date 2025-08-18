@@ -298,4 +298,25 @@ var migrations = []migration{
 				add column hmac_key bytea;`,
 		},
 	},
+	{
+		stmts: []string{
+			`
+			alter table password
+				add column groups text default "" not null
+			`,
+		},
+	},
+	{
+		stmts: []string{
+			`
+			alter table offline_session
+				add column totp text;`,
+			`
+			alter table offline_session
+				add column totp_confirmed boolean default false;`,
+			`
+			alter table auth_request
+				add column totp_validated boolean not null default false;`,
+		},
+	},
 }
