@@ -626,13 +626,24 @@ func (c *conn) UpdatePassword(ctx context.Context, email string, updater func(p 
 		if err != nil {
 			return err
 		}
+		if p.PreviousHashes == nil {
+			p.PreviousHashes = make([][]byte, 0)
+		}
+		previousHashes, err := json.Marshal(np.PreviousHashes)
+		if err != nil {
+			return fmt.Errorf("update password: %v", err)
+		}
 		_, err = tx.Exec(`
 			update password
 			set
-				hash = $1, username = $2, user_id = $3
-			where email = $4;
+				hash = $1, username = $2, user_id = $3,
+				incorrect_password_login_attempts = $4, locked_until = $5, hash_updated_at = $6,
+				previous_hashes = $7, complexity_level = $8
+			where email = $9;
 		`,
-			np.Hash, np.Username, np.UserID, p.Email,
+			np.Hash, np.Username, np.UserID,
+			np.IncorrectPasswordLoginAttempts, np.LockedUntil, np.HashUpdatedAt,
+			string(previousHashes), np.ComplexityLevel, p.Email,
 		)
 		if err != nil {
 			return fmt.Errorf("update password: %v", err)
@@ -648,7 +659,7 @@ func (c *conn) GetPassword(ctx context.Context, email string) (storage.Password,
 func getPassword(ctx context.Context, q querier, email string) (p storage.Password, err error) {
 	return scanPassword(q.QueryRow(`
 		select
-			email, hash, username, user_id
+			email, hash, username, user_id, incorrect_password_login_attempts, locked_until, hash_updated_at, previous_hashes, complexity_level
 		from password where email = $1;
 	`, strings.ToLower(email)))
 }
@@ -656,7 +667,7 @@ func getPassword(ctx context.Context, q querier, email string) (p storage.Passwo
 func (c *conn) ListPasswords(ctx context.Context) ([]storage.Password, error) {
 	rows, err := c.Query(`
 		select
-			email, hash, username, user_id
+			email, hash, username, user_id, incorrect_password_login_attempts, locked_until, hash_updated_at, previous_hashes, complexity_level
 		from password;
 	`)
 	if err != nil {
@@ -679,8 +690,11 @@ func (c *conn) ListPasswords(ctx context.Context) ([]storage.Password, error) {
 }
 
 func scanPassword(s scanner) (p storage.Password, err error) {
+	var previousHashesJSON string
 	err = s.Scan(
-		&p.Email, &p.Hash, &p.Username, &p.UserID,
+		&p.Email, &p.Hash, &p.Username,
+		&p.UserID, &p.IncorrectPasswordLoginAttempts, &p.LockedUntil,
+		&p.HashUpdatedAt, &previousHashesJSON, &p.ComplexityLevel,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -688,6 +702,15 @@ func scanPassword(s scanner) (p storage.Password, err error) {
 		}
 		return p, fmt.Errorf("select password: %v", err)
 	}
+
+	if previousHashesJSON != "" {
+		if err := json.Unmarshal([]byte(previousHashesJSON), &p.PreviousHashes); err != nil {
+			return p, fmt.Errorf("failed to unmarshal previous_hashes: %v", err)
+		}
+	} else {
+		p.PreviousHashes = make([][]byte, 0)
+	}
+
 	return p, nil
 }
 
