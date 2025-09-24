@@ -11,7 +11,6 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
-	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,7 +20,10 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/gorilla/mux"
 
+	"slices"
+
 	"github.com/dexidp/dex/connector"
+	"github.com/dexidp/dex/pkg/groups"
 	"github.com/dexidp/dex/server/internal"
 	"github.com/dexidp/dex/storage"
 )
@@ -371,6 +373,34 @@ func (s *Server) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
 		password := r.FormValue("password")
 		scopes := parseScopes(authReq.Scopes)
 
+		var localConnector bool
+		_, ok := pwConn.(passwordDB)
+		if ok {
+			localConnector = true
+		}
+
+		var p storage.Password
+		// Fetch local password in case of local connector for the further password policies validation
+		if localConnector && s.passwordPolicy != nil {
+			p, err = s.storage.GetPassword(ctx, username)
+			if err != nil {
+				s.logger.ErrorContext(r.Context(), "failed to get password", "err", err)
+				s.renderError(r, w, http.StatusInternalServerError, "Login error.")
+				return
+			}
+
+			if s.passwordPolicy.IsPasswordLocked(p) {
+				s.logger.WarnContext(r.Context(),
+					"login attempt for locked account",
+					"username", username,
+					"locked_until", p.LockedUntil,
+				)
+				// TODO: maybe need to render error field in the login page (like incorrect pass error)
+				s.renderError(r, w, http.StatusTooManyRequests, "Account temporarily locked")
+				return
+			}
+		}
+
 		identity, ok, err := pwConn.Login(r.Context(), scopes, username, password)
 		if err != nil {
 			s.logger.ErrorContext(r.Context(), "failed to login user", "err", err)
@@ -378,12 +408,68 @@ func (s *Server) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !ok {
+			// Validate login incorrect attempts for local connector with configured password policy
+			if localConnector && s.passwordPolicy != nil && s.passwordPolicy.IsMaxLoginAttemptsExeeded(p.IncorrectPasswordLoginAttempts+1) {
+				lockedUntil := time.Now().Add(s.passwordPolicy.lockout.lockDuration)
+				updader := func(p storage.Password) (storage.Password, error) {
+					p.LockedUntil = &lockedUntil
+					p.IncorrectPasswordLoginAttempts = 0
+					return p, nil
+				}
+
+				// Update locked status in storage
+				if err := s.storage.UpdatePassword(ctx, username, updader); err != nil {
+					s.logger.ErrorContext(r.Context(),
+						"failed to lock account",
+						"username", username,
+						"error", err,
+					)
+				}
+
+				s.logger.WarnContext(r.Context(),
+					"account locked due to too many failed attempts",
+					"username", username,
+					"attempts", p.IncorrectPasswordLoginAttempts+1,
+					"locked_until", lockedUntil,
+				)
+				s.renderError(r, w, http.StatusTooManyRequests, "Account temporarily locked")
+				return
+			}
+
 			if err := s.templates.password(r, w, r.URL.String(), username, usernamePrompt(pwConn), true, backLink); err != nil {
 				s.logger.ErrorContext(r.Context(), "server template error", "err", err)
 			}
 			s.logger.ErrorContext(r.Context(), "failed login attempt: Invalid credentials.", "user", username)
 			return
 		}
+
+		if localConnector && s.passwordPolicy != nil {
+			// Validate password complexity with configured password policy
+			if GetPasswordComplexity(password).level < s.passwordPolicy.complexity.level {
+				redirectURL, err := buildPasswordChangeURI(s.issuerURL.String(), username, r.URL.String(), complexityPolicyReason)
+				if err != nil {
+					s.logger.ErrorContext(r.Context(), "cannot build password change redirect URL", "err", err)
+					s.renderError(r, w, http.StatusInternalServerError, "Login error.")
+					return
+				}
+				http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+				s.logger.InfoContext(r.Context(), "user was forced to change password due to password complexity policy settings", "user", username)
+			}
+
+			// Validate password expiry with configured password policy
+			if s.passwordPolicy.IsPasswordExpired(p.HashUpdatedAt) {
+				redirectURL, err := buildPasswordChangeURI(s.issuerURL.String(), username, r.URL.String(), rotationPolicyReason)
+				if err != nil {
+					s.logger.ErrorContext(r.Context(), "cannot build password change redirect URL", "err", err)
+					s.renderError(r, w, http.StatusInternalServerError, "Login error.")
+					return
+				}
+				http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+				s.logger.InfoContext(r.Context(), "user was forced to change password due to password rotation policy settings", "user", username)
+				return
+			}
+		}
+
 		redirectURL, canSkipApproval, err := s.finalizeLogin(r.Context(), identity, authReq, conn.Connector)
 		if err != nil {
 			s.logger.ErrorContext(r.Context(), "failed to finalize login", "err", err)
@@ -517,10 +603,34 @@ func (s *Server) finalizeLogin(ctx context.Context, identity connector.Identity,
 		Groups:            identity.Groups,
 	}
 
+	client, err := s.storage.GetClient(ctx, authReq.ClientID)
+	if err != nil {
+		return "", false, fmt.Errorf("failed to retrieve client")
+	}
+
+	if len(client.AllowedEmails) > 0 {
+		allowed := slices.Contains(client.AllowedEmails, claims.Email)
+		if !allowed {
+			return "", false, fmt.Errorf("user %q not in allowed emails: %v", claims.Username, claims.Email)
+		}
+	}
+
+	if len(client.AllowedGroups) > 0 {
+		claims.Groups = groups.Filter(claims.Groups, client.AllowedGroups)
+		if len(claims.Groups) == 0 {
+			return "", false, fmt.Errorf("user %q not in allowed groups: %v", claims.Username, claims.Groups)
+		}
+	}
+
 	updater := func(a storage.AuthRequest) (storage.AuthRequest, error) {
 		a.LoggedIn = true
 		a.Claims = claims
 		a.ConnectorData = identity.ConnectorData
+
+		if !s.totp.enabledForConnector(a.ConnectorID) {
+			a.TOTPValidated = true
+		}
+
 		return a, nil
 	}
 	if err := s.storage.UpdateAuthRequest(ctx, authReq.ID, updater); err != nil {
@@ -536,52 +646,57 @@ func (s *Server) finalizeLogin(ctx context.Context, identity connector.Identity,
 		"connector_id", authReq.ConnectorID, "username", claims.Username,
 		"preferred_username", claims.PreferredUsername, "email", email, "groups", claims.Groups)
 
-	offlineAccessRequested := false
-	for _, scope := range authReq.Scopes {
-		if scope == scopeOfflineAccess {
-			offlineAccessRequested = true
-			break
-		}
-	}
-	_, canRefresh := conn.(connector.RefreshConnector)
-
-	if offlineAccessRequested && canRefresh {
-		// Try to retrieve an existing OfflineSession object for the corresponding user.
-		session, err := s.storage.GetOfflineSessions(ctx, identity.UserID, authReq.ConnectorID)
-		switch {
-		case err != nil && err == storage.ErrNotFound:
-			offlineSessions := storage.OfflineSessions{
-				UserID:        identity.UserID,
-				ConnID:        authReq.ConnectorID,
-				Refresh:       make(map[string]*storage.RefreshTokenRef),
-				ConnectorData: identity.ConnectorData,
-			}
-
-			// Create a new OfflineSession object for the user and add a reference object for
-			// the newly received refreshtoken.
-			if err := s.storage.CreateOfflineSessions(ctx, offlineSessions); err != nil {
-				s.logger.ErrorContext(ctx, "failed to create offline session", "err", err)
-				return "", false, err
-			}
-		case err == nil:
-			// Update existing OfflineSession obj with new RefreshTokenRef.
-			if err := s.storage.UpdateOfflineSessions(ctx, session.UserID, session.ConnID, func(old storage.OfflineSessions) (storage.OfflineSessions, error) {
-				if len(identity.ConnectorData) > 0 {
-					old.ConnectorData = identity.ConnectorData
-				}
-				return old, nil
-			}); err != nil {
-				s.logger.ErrorContext(ctx, "failed to update offline session", "err", err)
-				return "", false, err
-			}
-		default:
+	// Try to retrieve an existing OfflineSession object for the corresponding user.
+	// TODO(nabokihms): We create an offline session even if the offline access is not requested.
+	//   In the future it will be possible to migrate to sessions.
+	//   Sessions may contain attributes like approval status, etc.
+	if _, err := s.storage.GetOfflineSessions(ctx, identity.UserID, authReq.ConnectorID); err != nil {
+		if err != storage.ErrNotFound {
 			s.logger.ErrorContext(ctx, "failed to get offline session", "err", err)
+			return "", false, err
+		}
+		offlineSessions := storage.OfflineSessions{
+			UserID:        identity.UserID,
+			ConnID:        authReq.ConnectorID,
+			Refresh:       make(map[string]*storage.RefreshTokenRef),
+			ConnectorData: identity.ConnectorData,
+		}
+
+		if s.totp.enabledForConnector(authReq.ConnectorID) {
+			generated, err := s.totp.generate(authReq.ConnectorID, identity.Email)
+			if err != nil {
+				s.logger.ErrorContext(ctx, "failed to generate totp for offline session", "err", err)
+				return "", false, err
+			}
+			offlineSessions.TOTP = generated.String()
+		}
+
+		// Create a new OfflineSession object for the user and add a reference object for
+		// the newly received refreshtoken.
+		if err := s.storage.CreateOfflineSessions(ctx, offlineSessions); err != nil {
+			s.logger.ErrorContext(ctx, "failed to create offline session", "err", err)
 			return "", false, err
 		}
 	}
 
+	// Update existing OfflineSession obj with new RefreshTokenRef.
+	if err := s.storage.UpdateOfflineSessions(ctx, identity.UserID, authReq.ConnectorID, func(old storage.OfflineSessions) (storage.OfflineSessions, error) {
+		if len(identity.ConnectorData) > 0 {
+			old.ConnectorData = identity.ConnectorData
+		}
+		return old, nil
+	}); err != nil {
+		s.logger.ErrorContext(ctx, "failed to update offline session", "err", err)
+		return "", false, err
+	}
+
 	// we can skip the redirect to /approval and go ahead and send code if it's not required
 	if s.skipApproval && !authReq.ForceApprovalPrompt {
+		return "", true, nil
+	}
+
+	// we can skip the redirect to /approval and /totp and go ahead and send code if it's not required
+	if s.skipApproval && !authReq.ForceApprovalPrompt && !s.totp.enabledForConnector(authReq.ConnectorID) {
 		return "", true, nil
 	}
 
@@ -591,8 +706,21 @@ func (s *Server) finalizeLogin(ctx context.Context, identity connector.Identity,
 	h.Write([]byte(authReq.ID))
 	mac := h.Sum(nil)
 
-	returnURL := path.Join(s.issuerURL.Path, "/approval") + "?req=" + authReq.ID + "&hmac=" + base64.RawURLEncoding.EncodeToString(mac)
-	return returnURL, false, nil
+	// Deep copy issuer URL to avoid modifying the global one.
+	returnURL, _ := url.Parse(s.issuerURL.String())
+	values := returnURL.Query()
+	values.Set("req", authReq.ID)
+	values.Set("hmac", base64.RawURLEncoding.EncodeToString(mac))
+
+	if s.totp.enabledForConnector(authReq.ConnectorID) {
+		values.Set("state", identity.UserID)
+		returnURL = returnURL.JoinPath("totp")
+	} else {
+		returnURL = returnURL.JoinPath("approval")
+	}
+
+	returnURL.RawQuery = values.Encode()
+	return returnURL.String(), false, nil
 }
 
 func (s *Server) handleApproval(w http.ResponseWriter, r *http.Request) {
@@ -614,7 +742,7 @@ func (s *Server) handleApproval(w http.ResponseWriter, r *http.Request) {
 		s.renderError(r, w, http.StatusInternalServerError, "Database error.")
 		return
 	}
-	if !authReq.LoggedIn {
+	if !authReq.LoggedIn || !authReq.TOTPValidated {
 		s.logger.ErrorContext(r.Context(), "auth request does not have an identity for approval")
 		s.renderError(r, w, http.StatusInternalServerError, "Login process not yet finalized.")
 		return

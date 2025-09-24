@@ -171,6 +171,9 @@ type Client struct {
 	// Name and LogoURL used when displaying this client to the end user.
 	Name    string `json:"name" yaml:"name"`
 	LogoURL string `json:"logoURL" yaml:"logoURL"`
+
+	AllowedEmails []string `json:"allowedEmails,omitempty" yaml:"allowedEmails,omitempty"`
+	AllowedGroups []string `json:"allowedGroups,omitempty" yaml:"allowedGroups,omitempty"`
 }
 
 // Claims represents the ID Token claims supported by the server.
@@ -233,6 +236,9 @@ type AuthRequest struct {
 
 	// HMACKey is used when generating an AuthRequest-specific HMAC
 	HMACKey []byte
+
+	// TOTPValidated is set to true if the user has validated their second authentication factor.
+	TOTPValidated bool
 }
 
 // AuthCode represents a code which can be exchanged for an OAuth2 token response.
@@ -330,6 +336,11 @@ type OfflineSessions struct {
 
 	// Authentication data provided by an upstream source.
 	ConnectorData []byte
+
+	// TOTP is the otp key used to generate TOTP codes for the user.
+	// The second factor is ignored if the field is empty.
+	TOTP          string
+	TOTPConfirmed bool
 }
 
 // Password is an email to password mapping managed by the storage.
@@ -344,7 +355,9 @@ type Password struct {
 	Email string `json:"email"`
 
 	// Bcrypt encoded hash of the password. This package enforces a min cost value of 10
-	Hash []byte `json:"hash"`
+	Hash           []byte    `json:"hash"`
+	PreviousHashes [][]byte  `json:"previousHashes"`
+	HashUpdatedAt  time.Time `json:"hashUpdatedAt"`
 
 	// Bcrypt encoded hash of the password set in environment variable of this name.
 	HashFromEnv string `json:"hashFromEnv"`
@@ -354,6 +367,15 @@ type Password struct {
 
 	// Randomly generated user ID. This is NOT the primary ID of the Password object.
 	UserID string `json:"userID"`
+
+	// IncorrectPasswordLoginAttempts tracks the number of consecutive failed login attempts
+	IncorrectPasswordLoginAttempts uint64 `json:"incorrectPasswordLoginAttempts"`
+	// LockedUntil indicates timing when user will be able to login next time after lockout
+	// cuz of exceeding login attempts with password policy setting
+	LockedUntil *time.Time `json:"lockedUntil"`
+
+	// Groups assigned to the user
+	Groups []string `json:"groups"`
 }
 
 // Connector is an object that contains the metadata about connectors used to login to Dex.
