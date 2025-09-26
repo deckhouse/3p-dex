@@ -644,12 +644,12 @@ func (c *conn) UpdatePassword(ctx context.Context, email string, updater func(p 
 			set
 				hash = $1, username = $2, user_id = $3, groups = $4,
 				incorrect_password_login_attempts = $5, locked_until = $6, hash_updated_at = $7,
-				previous_hashes = $8
-			where email = $9;
+				previous_hashes = $8, require_reset_hash_on_next_succ_login = $9
+			where email = $10;
 		`,
 			np.Hash, np.Username, np.UserID, encoder(p.Groups),
 			np.IncorrectPasswordLoginAttempts, np.LockedUntil, np.HashUpdatedAt,
-			encoder(np.PreviousHashes), p.Email,
+			encoder(np.PreviousHashes), np.RequireResetHashOnNextSuccLogin, p.Email,
 		)
 		if err != nil {
 			return fmt.Errorf("update password: %v", err)
@@ -665,7 +665,7 @@ func (c *conn) GetPassword(ctx context.Context, email string) (storage.Password,
 func getPassword(ctx context.Context, q querier, email string) (p storage.Password, err error) {
 	return scanPassword(q.QueryRow(`
 		select
-			email, hash, username, user_id, groups, incorrect_password_login_attempts, locked_until, hash_updated_at, previous_hashes
+			email, hash, username, user_id, groups, incorrect_password_login_attempts, locked_until, hash_updated_at, previous_hashes, require_reset_hash_on_next_succ_login
 		from password where email = $1;
 	`, strings.ToLower(email)))
 }
@@ -673,7 +673,7 @@ func getPassword(ctx context.Context, q querier, email string) (p storage.Passwo
 func (c *conn) ListPasswords(ctx context.Context) ([]storage.Password, error) {
 	rows, err := c.Query(`
 		select
-			email, hash, username, user_id, groups, incorrect_password_login_attempts, locked_until, hash_updated_at, previous_hashes
+			email, hash, username, user_id, groups, incorrect_password_login_attempts, locked_until, hash_updated_at, previous_hashes, require_reset_hash_on_next_succ_login
 		from password;
 	`)
 	if err != nil {
@@ -699,7 +699,7 @@ func scanPassword(s scanner) (p storage.Password, err error) {
 	err = s.Scan(
 		&p.Email, &p.Hash, &p.Username,
 		&p.UserID, decoder(&p.Groups), &p.IncorrectPasswordLoginAttempts, &p.LockedUntil,
-		&p.HashUpdatedAt, decoder(&p.PreviousHashes),
+		&p.HashUpdatedAt, decoder(&p.PreviousHashes), &p.RequireResetHashOnNextSuccLogin,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {

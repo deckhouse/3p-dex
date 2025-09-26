@@ -335,4 +335,10 @@ var migrations = []migration{
 				add column groups bytea`,
 		},
 	},
+	{
+		stmts: []string{
+			`alter table password
+				add column require_reset_hash_on_next_succ_login boolean default false`,
+		},
+	},
 }

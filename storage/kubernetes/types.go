@@ -442,11 +442,12 @@ type Password struct {
 	// This field is IMMUTABLE. Do not change.
 	Email string `json:"email,omitempty"`
 
-	Hash           []byte    `json:"hash,omitempty"`
-	HashUpdatedAt  time.Time `json:"hashUpdatedAt"`
-	PreviousHashes [][]byte  `json:"previousHashes,omitempty"`
-	Username       string    `json:"username,omitempty"`
-	UserID         string    `json:"userID,omitempty"`
+	Hash                            []byte    `json:"hash,omitempty"`
+	HashUpdatedAt                   time.Time `json:"hashUpdatedAt"`
+	RequireResetHashOnNextSuccLogin bool      `json:"requireResetHashOnNextSuccLogin,omitempty"`
+	PreviousHashes                  [][]byte  `json:"previousHashes,omitempty"`
+	Username                        string    `json:"username,omitempty"`
+	UserID                          string    `json:"userID,omitempty"`
 
 	IncorrectPasswordLoginAttempts uint64     `json:"incorrectPasswordLoginAttempts"`
 	LockedUntil                    *time.Time `json:"lockedUntil"`
@@ -472,29 +473,31 @@ func (cli *client) fromStoragePassword(p storage.Password) Password {
 			Name:      cli.idToName(email),
 			Namespace: cli.namespace,
 		},
-		Email:                          email,
-		Hash:                           p.Hash,
-		HashUpdatedAt:                  p.HashUpdatedAt,
-		PreviousHashes:                 p.PreviousHashes,
-		Username:                       p.Username,
-		UserID:                         p.UserID,
-		IncorrectPasswordLoginAttempts: p.IncorrectPasswordLoginAttempts,
-		LockedUntil:                    p.LockedUntil,
-		Groups:                         p.Groups,
+		Email:                           email,
+		Hash:                            p.Hash,
+		HashUpdatedAt:                   p.HashUpdatedAt,
+		RequireResetHashOnNextSuccLogin: p.RequireResetHashOnNextSuccLogin,
+		PreviousHashes:                  p.PreviousHashes,
+		Username:                        p.Username,
+		UserID:                          p.UserID,
+		IncorrectPasswordLoginAttempts:  p.IncorrectPasswordLoginAttempts,
+		LockedUntil:                     p.LockedUntil,
+		Groups:                          p.Groups,
 	}
 }
 
 func toStoragePassword(p Password) storage.Password {
 	return storage.Password{
-		Email:                          p.Email,
-		Hash:                           p.Hash,
-		HashUpdatedAt:                  p.HashUpdatedAt,
-		PreviousHashes:                 p.PreviousHashes,
-		Username:                       p.Username,
-		UserID:                         p.UserID,
-		IncorrectPasswordLoginAttempts: p.IncorrectPasswordLoginAttempts,
-		LockedUntil:                    p.LockedUntil,
-		Groups:                         p.Groups,
+		Email:                           p.Email,
+		Hash:                            p.Hash,
+		HashUpdatedAt:                   p.HashUpdatedAt,
+		RequireResetHashOnNextSuccLogin: p.RequireResetHashOnNextSuccLogin,
+		PreviousHashes:                  p.PreviousHashes,
+		Username:                        p.Username,
+		UserID:                          p.UserID,
+		IncorrectPasswordLoginAttempts:  p.IncorrectPasswordLoginAttempts,
+		LockedUntil:                     p.LockedUntil,
+		Groups:                          p.Groups,
 	}
 }
 

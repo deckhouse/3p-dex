@@ -444,30 +444,43 @@ func (s *Server) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if localConnector && s.passwordPolicy != nil {
-			// Validate password complexity with configured password policy
-			if GetPasswordComplexity(password).level < s.passwordPolicy.complexity.level {
-				redirectURL, err := buildPasswordChangeURI(s.issuerURL.String(), username, r.URL.String(), complexityPolicyReason)
+		if localConnector {
+			if p.RequireResetHashOnNextSuccLogin {
+				redirectURL, err := buildPasswordChangeURI(s.issuerURL.String(), username, r.URL.String(), forcedReason)
 				if err != nil {
 					s.logger.ErrorContext(r.Context(), "cannot build password change redirect URL", "err", err)
 					s.renderError(r, w, http.StatusInternalServerError, "Login error.")
 					return
 				}
 				http.Redirect(w, r, redirectURL, http.StatusSeeOther)
-				s.logger.InfoContext(r.Context(), "user was forced to change password due to password complexity policy settings", "user", username)
+				s.logger.InfoContext(r.Context(), "user was forced to change password due to password object requirement", "user", username)
 			}
 
-			// Validate password expiry with configured password policy
-			if s.passwordPolicy.IsPasswordExpired(p.HashUpdatedAt) {
-				redirectURL, err := buildPasswordChangeURI(s.issuerURL.String(), username, r.URL.String(), rotationPolicyReason)
-				if err != nil {
-					s.logger.ErrorContext(r.Context(), "cannot build password change redirect URL", "err", err)
-					s.renderError(r, w, http.StatusInternalServerError, "Login error.")
+			if s.passwordPolicy != nil {
+				// Validate password complexity with configured password policy
+				if GetPasswordComplexity(password).level < s.passwordPolicy.complexity.level {
+					redirectURL, err := buildPasswordChangeURI(s.issuerURL.String(), username, r.URL.String(), complexityPolicyReason)
+					if err != nil {
+						s.logger.ErrorContext(r.Context(), "cannot build password change redirect URL", "err", err)
+						s.renderError(r, w, http.StatusInternalServerError, "Login error.")
+						return
+					}
+					http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+					s.logger.InfoContext(r.Context(), "user was forced to change password due to password complexity policy settings", "user", username)
+				}
+
+				// Validate password expiry with configured password policy
+				if s.passwordPolicy.IsPasswordExpired(p.HashUpdatedAt) {
+					redirectURL, err := buildPasswordChangeURI(s.issuerURL.String(), username, r.URL.String(), rotationPolicyReason)
+					if err != nil {
+						s.logger.ErrorContext(r.Context(), "cannot build password change redirect URL", "err", err)
+						s.renderError(r, w, http.StatusInternalServerError, "Login error.")
+						return
+					}
+					http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+					s.logger.InfoContext(r.Context(), "user was forced to change password due to password rotation policy settings", "user", username)
 					return
 				}
-				http.Redirect(w, r, redirectURL, http.StatusSeeOther)
-				s.logger.InfoContext(r.Context(), "user was forced to change password due to password rotation policy settings", "user", username)
-				return
 			}
 		}
 
@@ -706,6 +719,16 @@ func (s *Server) finalizeLogin(ctx context.Context, identity connector.Identity,
 	if err := s.storage.UpdateOfflineSessions(ctx, identity.UserID, authReq.ConnectorID, func(old storage.OfflineSessions) (storage.OfflineSessions, error) {
 		if len(identity.ConnectorData) > 0 {
 			old.ConnectorData = identity.ConnectorData
+		}
+		// handle case when 2fa setting was activated with already existed users
+		if old.TOTP == "" && s.totp.enabledForConnector(authReq.ConnectorID) {
+			generated, err := s.totp.generate(authReq.ConnectorID, identity.Email)
+			if err != nil {
+				s.logger.ErrorContext(ctx, "failed to generate totp for offline session", "err", err)
+				return old, err
+			}
+
+			old.TOTP = generated.String()
 		}
 		return old, nil
 	}); err != nil {

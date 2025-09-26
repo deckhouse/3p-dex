@@ -342,6 +342,7 @@ type passwordChangeReason string
 const (
 	complexityPolicyReason passwordChangeReason = "complexity"
 	rotationPolicyReason   passwordChangeReason = "rotation"
+	forcedReason           passwordChangeReason = "forced"
 )
 
 type passwordChangeParams struct {
@@ -360,6 +361,7 @@ func (t *templates) passwordChange(r *http.Request, w http.ResponseWriter, param
 		ChangeReason struct {
 			WeakComplexity bool
 			Rotation       bool
+			Forced         bool
 		}
 		Error struct {
 			Exists bool
@@ -388,6 +390,8 @@ func (t *templates) passwordChange(r *http.Request, w http.ResponseWriter, param
 		data.ChangeReason.WeakComplexity = true
 	case rotationPolicyReason:
 		data.ChangeReason.Rotation = true
+	case forcedReason:
+		data.ChangeReason.Forced = true
 	}
 
 	data.PasswordPolicy.ComplexityRequirements = params.NewPasswordHint

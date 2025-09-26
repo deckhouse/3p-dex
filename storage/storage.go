@@ -355,9 +355,10 @@ type Password struct {
 	Email string `json:"email"`
 
 	// Bcrypt encoded hash of the password. This package enforces a min cost value of 10
-	Hash           []byte    `json:"hash"`
-	PreviousHashes [][]byte  `json:"previousHashes"`
-	HashUpdatedAt  time.Time `json:"hashUpdatedAt"`
+	Hash                            []byte    `json:"hash"`
+	PreviousHashes                  [][]byte  `json:"previousHashes"`
+	HashUpdatedAt                   time.Time `json:"hashUpdatedAt"`
+	RequireResetHashOnNextSuccLogin bool      `json:"requireResetHashOnNextSuccLogin"`
 
 	// Bcrypt encoded hash of the password set in environment variable of this name.
 	HashFromEnv string `json:"hashFromEnv"`

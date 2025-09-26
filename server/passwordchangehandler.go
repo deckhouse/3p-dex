@@ -156,6 +156,7 @@ func (s *Server) handlePasswordChange(w http.ResponseWriter, r *http.Request) {
 			}
 			p.HashUpdatedAt = time.Now()
 			p.Hash = hash
+			p.RequireResetHashOnNextSuccLogin = false
 			return p, nil
 		}
 		if err := s.storage.UpdatePassword(ctx, username, updater); err != nil {
