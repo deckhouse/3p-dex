@@ -104,6 +104,9 @@ type Config struct {
 	// Refresh token expiration settings
 	RefreshTokenPolicy *RefreshTokenPolicy
 
+	// Password policy settings
+	PasswordPolicy *PasswordPolicy
+
 	// If set, the server will use this connector to handle password grants
 	PasswordConnector string
 
@@ -119,6 +122,9 @@ type Config struct {
 	PrometheusRegistry *prometheus.Registry
 
 	HealthChecker gosundheit.Health
+
+	TOTPIssuer     string
+	TOTPConnectors []string
 
 	// If enabled, the server will continue starting even if some connectors fail to initialize.
 	// This allows the server to operate with a subset of connectors if some are misconfigured.
@@ -198,8 +204,11 @@ type Server struct {
 	deviceRequestsValidFor time.Duration
 
 	refreshTokenPolicy *RefreshTokenPolicy
+	passwordPolicy     *PasswordPolicy
 
 	logger *slog.Logger
+
+	totp *secondFactorAuthenticator
 }
 
 // NewServer constructs a server from the provided config.
@@ -310,11 +319,13 @@ func newServer(ctx context.Context, c Config, rotationStrategy rotationStrategy)
 		authRequestsValidFor:   value(c.AuthRequestsValidFor, 24*time.Hour),
 		deviceRequestsValidFor: value(c.DeviceRequestsValidFor, 5*time.Minute),
 		refreshTokenPolicy:     c.RefreshTokenPolicy,
+		passwordPolicy:         c.PasswordPolicy,
 		skipApproval:           c.SkipApprovalScreen,
 		alwaysShowLogin:        c.AlwaysShowLoginScreen,
 		now:                    now,
 		templates:              tmpls,
 		passwordConnector:      c.PasswordConnector,
+		totp:                   newSecondFactorAuthenticator(c.TOTPIssuer, c.TOTPConnectors),
 		logger:                 c.Logger,
 	}
 
@@ -464,7 +475,7 @@ func newServer(ctx context.Context, c Config, rotationStrategy rotationStrategy)
 			<h1>Dex IdP</h1>
 			<h3>A Federated OpenID Connect Provider</h3>
 			<p><a href=%q>Discovery</a></p>`,
-			s.issuerURL.String()+"/.well-known/openid-configuration")
+			s.issuerURL.JoinPath(".well-known", "openid-configuration").String())
 		if err != nil {
 			s.logger.Error("failed to write response", "err", err)
 			s.renderError(r, w, http.StatusInternalServerError, "Handling the / path error.")
@@ -496,10 +507,12 @@ func newServer(ctx context.Context, c Config, rotationStrategy rotationStrategy)
 		}
 		s.handleConnectorCallback(w, r)
 	})
+	handleFunc(passwordChangeURI, s.handlePasswordChange)
 	// For easier connector-specific web server configuration, e.g. for the
 	// "authproxy" connector.
 	handleFunc("/callback/{connector}", s.handleConnectorCallback)
 	handleFunc("/approval", s.handleApproval)
+	handleFunc("/totp", s.handleTOTPVerify)
 	handle("/healthz", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !c.HealthChecker.IsHealthy() {
 			s.renderError(r, w, http.StatusInternalServerError, "Health check failed.")
@@ -562,13 +575,26 @@ func (db passwordDB) Login(ctx context.Context, s connector.Scopes, email, passw
 		return connector.Identity{}, false, err
 	}
 	if err := bcrypt.CompareHashAndPassword(p.Hash, []byte(password)); err != nil {
+		if err := db.s.UpdatePassword(ctx, email, func(p storage.Password) (storage.Password, error) {
+			p.IncorrectPasswordLoginAttempts += 1
+			return p, nil
+		}); err != nil {
+			return connector.Identity{}, false, err
+		}
 		return connector.Identity{}, false, nil
+	}
+	if err := db.s.UpdatePassword(ctx, email, func(p storage.Password) (storage.Password, error) {
+		p.IncorrectPasswordLoginAttempts = 0
+		return p, nil
+	}); err != nil {
+		return connector.Identity{}, true, err
 	}
 	return connector.Identity{
 		UserID:        p.UserID,
 		Username:      p.Username,
 		Email:         p.Email,
 		EmailVerified: true,
+		Groups:        p.Groups,
 	}, true, nil
 }
 
@@ -593,6 +619,7 @@ func (db passwordDB) Refresh(ctx context.Context, s connector.Scopes, identity c
 	// No other fields are expected to be refreshable as email is effectively used
 	// as an ID and this implementation doesn't deal with groups.
 	identity.Username = p.Username
+	identity.Groups = p.Groups
 
 	return identity, nil
 }
