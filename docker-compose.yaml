@@ -45,3 +45,20 @@ services:
         volumes:
             - ./connector/ldap/testdata/certs:/container/service/slapd/assets/certs
             - ./connector/ldap/testdata/schema.ldif:/container/service/slapd/assets/config/bootstrap/ldif/99-schema.ldif
+
+    # Optional: example-app for testing OIDC flow
+    # Uncomment to use with dex. Note: requires `docker-compose build example-app` first
+    # example-app:
+    #     build:
+    #         context: .
+    #         dockerfile: examples/example-app/Dockerfile
+    #         args:
+    #             BASE_IMAGE: alpine
+    #     ports:
+    #         - "5555:5555"
+    #     environment:
+    #         ISSUER: http://dex:5556
+    #         CLIENT_ID: example-app
+    #         CLIENT_SECRET: example-app-secret
+    #         REDIRECT_URL: http://localhost:5555/callback
+

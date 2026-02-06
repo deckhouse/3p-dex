@@ -33,6 +33,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        app:
+          - dex
+          - example-app
         variant:
           - alpine
           - distroless
@@ -67,7 +70,12 @@ jobs:
 
       - name: Set image name
         id: image-name
-        run: echo "value=ghcr.io/${{ github.repository }}" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ "${{ matrix.app }}" = "dex" ]; then
+            echo "value=ghcr.io/${{ github.repository }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=ghcr.io/${{ github.repository }}/${{ matrix.app }}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Gather build metadata
         id: meta
@@ -75,7 +83,7 @@ jobs:
         with:
           images: |
             ${{ steps.image-name.outputs.value }}
-            ${{ github.repository == 'dexidp/dex' && 'dexidp/dex' || '' }}
+            ${{ github.repository == 'dexidp/dex' && matrix.app == 'dex' && 'dexidp/dex' || '' }}
           flavor: |
             latest = false
           tags: |
@@ -120,6 +128,7 @@ jobs:
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
           context: .
+          file: ${{ matrix.app == 'dex' && 'Dockerfile' || 'examples/example-app/Dockerfile' }}
           platforms: linux/amd64,linux/arm/v7,linux/arm64,linux/ppc64le,linux/s390x
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
