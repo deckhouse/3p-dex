@@ -123,6 +123,15 @@ telemetry:
     # Uncomment the passwordConnector to use a specific connector for password grants
 #   passwordConnector: local
 
+# Authentication policies: CEL expressions evaluated after login.
+# If any expression returns true, the login is denied with the message.
+# Uncomment to test — admin@example.com will be denied because they lack the 'sre' group.
+# authPolicy:
+# - expression: "!identity.email_verified"
+#   message: "'Email must be verified before login'"
+# - expression: "!('sre' in identity.groups)"
+#   message: "'Only SRE team members can log in'"
+
 # Instead of reading from an external storage, use this list of clients.
 #
 # If this option isn't chosen clients may be added through the gRPC API.
@@ -133,6 +142,10 @@ staticClients:
   - '/dex/device/callback'
   name: 'Example App'
   secret: ZXhhbXBsZS1hcHAtc2VjcmV0
+  # Per-client auth policy: only allow connector "mock" for this app.
+  # authPolicy:
+  # - expression: "request.connector_id != 'mock'"
+  #   message: "'This app only supports the Mock connector'"
 
 # Example using environment variables
 # Set DEX_CLIENT_ID and DEX_SECURE_CLIENT_SECRET before starting Dex

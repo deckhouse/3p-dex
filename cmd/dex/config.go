@@ -49,6 +49,9 @@ type Config struct {
 	// Signer configuration controls signing of JWT tokens issued by Dex.
 	Signer Signer `json:"signer"`
 
+	// AuthPolicy is a list of global CEL deny-rules evaluated after authentication.
+	AuthPolicy []storage.PolicyExpression `json:"authPolicy,omitempty"`
+
 	// StaticConnectors are user defined connectors specified in the ConfigMap
 	// Write operations, like updating a connector, will fail.
 	StaticConnectors []Connector `json:"connectors"`

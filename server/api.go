@@ -65,6 +65,7 @@ func (d dexAPI) GetClient(ctx context.Context, req *api.GetClientReq) (*api.GetC
 			TrustedPeers: c.TrustedPeers,
 			Public:       c.Public,
 			LogoUrl:      c.LogoURL,
+			AuthPolicy:   toAPIAuthPolicy(c.AuthPolicy),
 		},
 	}, nil
 }
@@ -89,6 +90,7 @@ func (d dexAPI) CreateClient(ctx context.Context, req *api.CreateClientReq) (*ap
 		Public:       req.Client.Public,
 		Name:         req.Client.Name,
 		LogoURL:      req.Client.LogoUrl,
+		AuthPolicy:   fromAPIAuthPolicy(req.Client.AuthPolicy),
 	}
 	if err := d.s.CreateClient(ctx, c); err != nil {
 		if err == storage.ErrAlreadyExists {
@@ -120,6 +122,9 @@ func (d dexAPI) UpdateClient(ctx context.Context, req *api.UpdateClientReq) (*ap
 		}
 		if req.LogoUrl != "" {
 			old.LogoURL = req.LogoUrl
+		}
+		if req.AuthPolicy != nil {
+			old.AuthPolicy = fromAPIAuthPolicy(req.AuthPolicy)
 		}
 		return old, nil
 	})
@@ -161,6 +166,7 @@ func (d dexAPI) ListClients(ctx context.Context, req *api.ListClientReq) (*api.L
 			TrustedPeers: client.TrustedPeers,
 			Public:       client.Public,
 			LogoUrl:      client.LogoURL,
+			AuthPolicy:   toAPIAuthPolicy(client.AuthPolicy),
 		}
 		clients = append(clients, &c)
 	}
@@ -580,4 +586,32 @@ func defaultTo[T comparable](v, def T) T {
 		return def
 	}
 	return v
+}
+
+func toAPIAuthPolicy(policies []storage.PolicyExpression) []*api.PolicyExpression {
+	if len(policies) == 0 {
+		return nil
+	}
+	result := make([]*api.PolicyExpression, len(policies))
+	for i, p := range policies {
+		result[i] = &api.PolicyExpression{
+			Expression: p.Expression,
+			Message:    p.Message,
+		}
+	}
+	return result
+}
+
+func fromAPIAuthPolicy(policies []*api.PolicyExpression) []storage.PolicyExpression {
+	if len(policies) == 0 {
+		return nil
+	}
+	result := make([]storage.PolicyExpression, len(policies))
+	for i, p := range policies {
+		result[i] = storage.PolicyExpression{
+			Expression: p.Expression,
+			Message:    p.Message,
+		}
+	}
+	return result
 }

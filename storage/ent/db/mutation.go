@@ -5132,6 +5132,8 @@ type OAuth2ClientMutation struct {
 	public              *bool
 	name                *string
 	logo_url            *string
+	auth_policy         *[]storage.PolicyExpression
+	appendauth_policy   []storage.PolicyExpression
 	clearedFields       map[string]struct{}
 	done                bool
 	oldValue            func(context.Context) (*OAuth2Client, error)
@@ -5516,6 +5518,71 @@ func (m *OAuth2ClientMutation) ResetLogoURL() {
 	m.logo_url = nil
 }
 
+// SetAuthPolicy sets the "auth_policy" field.
+func (m *OAuth2ClientMutation) SetAuthPolicy(se []storage.PolicyExpression) {
+	m.auth_policy = &se
+	m.appendauth_policy = nil
+}
+
+// AuthPolicy returns the value of the "auth_policy" field in the mutation.
+func (m *OAuth2ClientMutation) AuthPolicy() (r []storage.PolicyExpression, exists bool) {
+	v := m.auth_policy
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAuthPolicy returns the old "auth_policy" field's value of the OAuth2Client entity.
+// If the OAuth2Client object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OAuth2ClientMutation) OldAuthPolicy(ctx context.Context) (v []storage.PolicyExpression, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAuthPolicy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAuthPolicy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAuthPolicy: %w", err)
+	}
+	return oldValue.AuthPolicy, nil
+}
+
+// AppendAuthPolicy adds se to the "auth_policy" field.
+func (m *OAuth2ClientMutation) AppendAuthPolicy(se []storage.PolicyExpression) {
+	m.appendauth_policy = append(m.appendauth_policy, se...)
+}
+
+// AppendedAuthPolicy returns the list of values that were appended to the "auth_policy" field in this mutation.
+func (m *OAuth2ClientMutation) AppendedAuthPolicy() ([]storage.PolicyExpression, bool) {
+	if len(m.appendauth_policy) == 0 {
+		return nil, false
+	}
+	return m.appendauth_policy, true
+}
+
+// ClearAuthPolicy clears the value of the "auth_policy" field.
+func (m *OAuth2ClientMutation) ClearAuthPolicy() {
+	m.auth_policy = nil
+	m.appendauth_policy = nil
+	m.clearedFields[oauth2client.FieldAuthPolicy] = struct{}{}
+}
+
+// AuthPolicyCleared returns if the "auth_policy" field was cleared in this mutation.
+func (m *OAuth2ClientMutation) AuthPolicyCleared() bool {
+	_, ok := m.clearedFields[oauth2client.FieldAuthPolicy]
+	return ok
+}
+
+// ResetAuthPolicy resets all changes to the "auth_policy" field.
+func (m *OAuth2ClientMutation) ResetAuthPolicy() {
+	m.auth_policy = nil
+	m.appendauth_policy = nil
+	delete(m.clearedFields, oauth2client.FieldAuthPolicy)
+}
+
 // Where appends a list predicates to the OAuth2ClientMutation builder.
 func (m *OAuth2ClientMutation) Where(ps ...predicate.OAuth2Client) {
 	m.predicates = append(m.predicates, ps...)
@@ -5550,7 +5617,7 @@ func (m *OAuth2ClientMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OAuth2ClientMutation) Fields() []string {
-	fields := make([]string, 0, 6)
+	fields := make([]string, 0, 7)
 	if m.secret != nil {
 		fields = append(fields, oauth2client.FieldSecret)
 	}
@@ -5568,6 +5635,9 @@ func (m *OAuth2ClientMutation) Fields() []string {
 	}
 	if m.logo_url != nil {
 		fields = append(fields, oauth2client.FieldLogoURL)
+	}
+	if m.auth_policy != nil {
+		fields = append(fields, oauth2client.FieldAuthPolicy)
 	}
 	return fields
 }
@@ -5589,6 +5659,8 @@ func (m *OAuth2ClientMutation) Field(name string) (ent.Value, bool) {
 		return m.Name()
 	case oauth2client.FieldLogoURL:
 		return m.LogoURL()
+	case oauth2client.FieldAuthPolicy:
+		return m.AuthPolicy()
 	}
 	return nil, false
 }
@@ -5610,6 +5682,8 @@ func (m *OAuth2ClientMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldName(ctx)
 	case oauth2client.FieldLogoURL:
 		return m.OldLogoURL(ctx)
+	case oauth2client.FieldAuthPolicy:
+		return m.OldAuthPolicy(ctx)
 	}
 	return nil, fmt.Errorf("unknown OAuth2Client field %s", name)
 }
@@ -5661,6 +5735,13 @@ func (m *OAuth2ClientMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetLogoURL(v)
 		return nil
+	case oauth2client.FieldAuthPolicy:
+		v, ok := value.([]storage.PolicyExpression)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAuthPolicy(v)
+		return nil
 	}
 	return fmt.Errorf("unknown OAuth2Client field %s", name)
 }
@@ -5697,6 +5778,9 @@ func (m *OAuth2ClientMutation) ClearedFields() []string {
 	if m.FieldCleared(oauth2client.FieldTrustedPeers) {
 		fields = append(fields, oauth2client.FieldTrustedPeers)
 	}
+	if m.FieldCleared(oauth2client.FieldAuthPolicy) {
+		fields = append(fields, oauth2client.FieldAuthPolicy)
+	}
 	return fields
 }
 
@@ -5716,6 +5800,9 @@ func (m *OAuth2ClientMutation) ClearField(name string) error {
 		return nil
 	case oauth2client.FieldTrustedPeers:
 		m.ClearTrustedPeers()
+		return nil
+	case oauth2client.FieldAuthPolicy:
+		m.ClearAuthPolicy()
 		return nil
 	}
 	return fmt.Errorf("unknown OAuth2Client nullable field %s", name)
@@ -5742,6 +5829,9 @@ func (m *OAuth2ClientMutation) ResetField(name string) error {
 		return nil
 	case oauth2client.FieldLogoURL:
 		m.ResetLogoURL()
+		return nil
+	case oauth2client.FieldAuthPolicy:
+		m.ResetAuthPolicy()
 		return nil
 	}
 	return fmt.Errorf("unknown OAuth2Client field %s", name)

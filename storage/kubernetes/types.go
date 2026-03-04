@@ -251,6 +251,8 @@ type Client struct {
 
 	Name    string `json:"name,omitempty"`
 	LogoURL string `json:"logoURL,omitempty"`
+
+	AuthPolicy []storage.PolicyExpression `json:"authPolicy,omitempty"`
 }
 
 // ClientList is a list of Clients.
@@ -277,6 +279,7 @@ func (cli *client) fromStorageClient(c storage.Client) Client {
 		Public:       c.Public,
 		Name:         c.Name,
 		LogoURL:      c.LogoURL,
+		AuthPolicy:   c.AuthPolicy,
 	}
 }
 
@@ -289,6 +292,7 @@ func toStorageClient(c Client) storage.Client {
 		Public:       c.Public,
 		Name:         c.Name,
 		LogoURL:      c.LogoURL,
+		AuthPolicy:   c.AuthPolicy,
 	}
 }
 

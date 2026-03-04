@@ -23,6 +23,8 @@ const (
 	FieldName = "name"
 	// FieldLogoURL holds the string denoting the logo_url field in the database.
 	FieldLogoURL = "logo_url"
+	// FieldAuthPolicy holds the string denoting the auth_policy field in the database.
+	FieldAuthPolicy = "auth_policy"
 	// Table holds the table name of the oauth2client in the database.
 	Table = "oauth2clients"
 )
@@ -36,6 +38,7 @@ var Columns = []string{
 	FieldPublic,
 	FieldName,
 	FieldLogoURL,
+	FieldAuthPolicy,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).

@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
+	"github.com/dexidp/dex/storage"
 	"github.com/dexidp/dex/storage/ent/db/oauth2client"
 	"github.com/dexidp/dex/storage/ent/db/predicate"
 )
@@ -120,6 +121,24 @@ func (_u *OAuth2ClientUpdate) SetNillableLogoURL(v *string) *OAuth2ClientUpdate 
 	return _u
 }
 
+// SetAuthPolicy sets the "auth_policy" field.
+func (_u *OAuth2ClientUpdate) SetAuthPolicy(v []storage.PolicyExpression) *OAuth2ClientUpdate {
+	_u.mutation.SetAuthPolicy(v)
+	return _u
+}
+
+// AppendAuthPolicy appends value to the "auth_policy" field.
+func (_u *OAuth2ClientUpdate) AppendAuthPolicy(v []storage.PolicyExpression) *OAuth2ClientUpdate {
+	_u.mutation.AppendAuthPolicy(v)
+	return _u
+}
+
+// ClearAuthPolicy clears the value of the "auth_policy" field.
+func (_u *OAuth2ClientUpdate) ClearAuthPolicy() *OAuth2ClientUpdate {
+	_u.mutation.ClearAuthPolicy()
+	return _u
+}
+
 // Mutation returns the OAuth2ClientMutation object of the builder.
 func (_u *OAuth2ClientUpdate) Mutation() *OAuth2ClientMutation {
 	return _u.mutation
@@ -217,6 +236,17 @@ func (_u *OAuth2ClientUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if value, ok := _u.mutation.LogoURL(); ok {
 		_spec.SetField(oauth2client.FieldLogoURL, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.AuthPolicy(); ok {
+		_spec.SetField(oauth2client.FieldAuthPolicy, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAuthPolicy(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauth2client.FieldAuthPolicy, value)
+		})
+	}
+	if _u.mutation.AuthPolicyCleared() {
+		_spec.ClearField(oauth2client.FieldAuthPolicy, field.TypeJSON)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -327,6 +357,24 @@ func (_u *OAuth2ClientUpdateOne) SetNillableLogoURL(v *string) *OAuth2ClientUpda
 	if v != nil {
 		_u.SetLogoURL(*v)
 	}
+	return _u
+}
+
+// SetAuthPolicy sets the "auth_policy" field.
+func (_u *OAuth2ClientUpdateOne) SetAuthPolicy(v []storage.PolicyExpression) *OAuth2ClientUpdateOne {
+	_u.mutation.SetAuthPolicy(v)
+	return _u
+}
+
+// AppendAuthPolicy appends value to the "auth_policy" field.
+func (_u *OAuth2ClientUpdateOne) AppendAuthPolicy(v []storage.PolicyExpression) *OAuth2ClientUpdateOne {
+	_u.mutation.AppendAuthPolicy(v)
+	return _u
+}
+
+// ClearAuthPolicy clears the value of the "auth_policy" field.
+func (_u *OAuth2ClientUpdateOne) ClearAuthPolicy() *OAuth2ClientUpdateOne {
+	_u.mutation.ClearAuthPolicy()
 	return _u
 }
 
@@ -457,6 +505,17 @@ func (_u *OAuth2ClientUpdateOne) sqlSave(ctx context.Context) (_node *OAuth2Clie
 	}
 	if value, ok := _u.mutation.LogoURL(); ok {
 		_spec.SetField(oauth2client.FieldLogoURL, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.AuthPolicy(); ok {
+		_spec.SetField(oauth2client.FieldAuthPolicy, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAuthPolicy(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauth2client.FieldAuthPolicy, value)
+		})
+	}
+	if _u.mutation.AuthPolicyCleared() {
+		_spec.ClearField(oauth2client.FieldAuthPolicy, field.TypeJSON)
 	}
 	_node = &OAuth2Client{config: _u.config}
 	_spec.Assign = _node.assignValues

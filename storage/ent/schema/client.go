@@ -3,6 +3,8 @@ package schema
 import (
 	"entgo.io/ent"
 	"entgo.io/ent/schema/field"
+
+	"github.com/dexidp/dex/storage"
 )
 
 /* Original SQL table:
@@ -45,6 +47,8 @@ func (OAuth2Client) Fields() []ent.Field {
 		field.Text("logo_url").
 			SchemaType(textSchema).
 			NotEmpty(),
+		field.JSON("auth_policy", []storage.PolicyExpression{}).
+			Optional(),
 	}
 }
 

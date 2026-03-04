@@ -142,6 +142,13 @@ type Storage interface {
 	GarbageCollect(ctx context.Context, now time.Time) (GCResult, error)
 }
 
+// PolicyExpression is a CEL deny-rule used in authentication policies.
+// If Expression evaluates to true, the login is denied with Message.
+type PolicyExpression struct {
+	Expression string `json:"expression"`
+	Message    string `json:"message,omitempty"`
+}
+
 // Client represents an OAuth2 client.
 //
 // For further reading see:
@@ -171,6 +178,10 @@ type Client struct {
 	// Name and LogoURL used when displaying this client to the end user.
 	Name    string `json:"name"`
 	LogoURL string `json:"logoURL"`
+
+	// AuthPolicy is a list of CEL deny-rules evaluated after authentication.
+	// If any expression returns true, the login is denied.
+	AuthPolicy []PolicyExpression `json:"authPolicy,omitempty"`
 }
 
 // Claims represents the ID Token claims supported by the server.

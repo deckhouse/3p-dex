@@ -374,4 +374,12 @@ var migrations = []migration{
 		},
 		flavor: &flavorMySQL,
 	},
+	// Migration for adding auth_policy to client table
+	{
+		stmts: []string{
+			`
+			alter table client
+				add column auth_policy bytea;`,
+		},
+	},
 }

@@ -267,6 +267,9 @@ func testClientCRUD(t *testing.T, s storage.Storage) {
 		RedirectURIs: []string{"foo://bar.com/", "https://auth.example.com"},
 		Name:         "dex client",
 		LogoURL:      "https://goo.gl/JIyzIC",
+		AuthPolicy: []storage.PolicyExpression{
+			{Expression: "!identity.email_verified", Message: "'Email must be verified'"},
+		},
 	}
 	err := s.DeleteClient(ctx, id1)
 	mustBeErrNotFound(t, "client", err)

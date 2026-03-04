@@ -44,6 +44,7 @@ import (
 	"github.com/dexidp/dex/connector/oidc"
 	"github.com/dexidp/dex/connector/openshift"
 	"github.com/dexidp/dex/connector/saml"
+	dexcel "github.com/dexidp/dex/pkg/cel"
 	"github.com/dexidp/dex/server/signer"
 	"github.com/dexidp/dex/storage"
 	"github.com/dexidp/dex/web"
@@ -125,6 +126,10 @@ type Config struct {
 	// If enabled, the server will continue starting even if some connectors fail to initialize.
 	// This allows the server to operate with a subset of connectors if some are misconfigured.
 	ContinueOnConnectorFailure bool
+
+	// AuthPolicy is a list of global CEL deny-rules evaluated after authentication.
+	// If any expression returns true, the login is denied.
+	AuthPolicy []storage.PolicyExpression `json:"authPolicy,omitempty"`
 }
 
 // WebConfig holds the server's frontend templates and asset configuration.
@@ -204,6 +209,11 @@ type Server struct {
 	logger *slog.Logger
 
 	signer signer.Signer
+
+	// Compiled global authentication policies
+	globalAuthPolicy []CompiledAuthPolicy
+	// Compiled per-client authentication policies
+	clientAuthPolicies map[string][]CompiledAuthPolicy
 }
 
 // NewServer constructs a server from the provided config.
@@ -313,6 +323,21 @@ func newServer(ctx context.Context, c Config) (*Server, error) {
 		passwordConnector:      c.PasswordConnector,
 		logger:                 c.Logger,
 		signer:                 c.Signer,
+		clientAuthPolicies:     make(map[string][]CompiledAuthPolicy),
+	}
+
+	// Compile CEL auth policies if configured.
+	if len(c.AuthPolicy) > 0 {
+		policyVars := append(dexcel.IdentityVariables(), dexcel.RequestVariables()...)
+		policyCompiler, err := dexcel.NewCompiler(policyVars)
+		if err != nil {
+			return nil, fmt.Errorf("server: failed to create auth policy compiler: %v", err)
+		}
+
+		s.globalAuthPolicy, err = CompileAuthPolicies(policyCompiler, c.AuthPolicy)
+		if err != nil {
+			return nil, fmt.Errorf("server: failed to compile global auth policies: %v", err)
+		}
 	}
 
 	// Retrieves connector objects in backend storage. This list includes the static connectors

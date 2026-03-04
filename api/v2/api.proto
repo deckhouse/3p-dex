@@ -5,6 +5,12 @@ package api;
 option java_package = "com.coreos.dex.api";
 option go_package = "github.com/dexidp/dex/api/v2;api";
 
+// PolicyExpression is a CEL deny-rule for authentication policies.
+message PolicyExpression {
+  string expression = 1;
+  string message = 2;
+}
+
 // Client represents an OAuth2 client.
 message Client {
   string id = 1;
@@ -14,6 +20,7 @@ message Client {
   bool public = 5;
   string name = 6;
   string logo_url = 7;
+  repeated PolicyExpression auth_policy = 8;
 }
 
 // ClientInfo represents an OAuth2 client without sensitive information.
@@ -24,6 +31,7 @@ message ClientInfo {
   bool public = 4;
   string name = 5;
   string logo_url = 6;
+  repeated PolicyExpression auth_policy = 7;
 }
 
 // GetClientReq is a request to retrieve client details.
@@ -66,6 +74,7 @@ message UpdateClientReq {
     repeated string trusted_peers = 3;
     string name = 4;
     string logo_url = 5;
+    repeated PolicyExpression auth_policy = 6;
 }
 
 // UpdateClientResp returns the response from updating a client.

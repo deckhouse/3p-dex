@@ -83,6 +83,7 @@ func toStorageClient(c *db.OAuth2Client) storage.Client {
 		Public:       c.Public,
 		Name:         c.Name,
 		LogoURL:      c.LogoURL,
+		AuthPolicy:   c.AuthPolicy,
 	}
 }
 

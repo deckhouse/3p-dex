@@ -27,4 +27,7 @@ const (
 	// ErrMsgNotInRequiredGroups is shown when a user authenticates successfully
 	// but is not a member of any of the groups required by the connector.
 	ErrMsgNotInRequiredGroups = "You are not a member of any of the required groups to authenticate."
+
+	// ErrMsgAuthPolicyDenied is shown when a CEL authentication policy denies login.
+	ErrMsgAuthPolicyDenied = "Access denied by authentication policy."
 )

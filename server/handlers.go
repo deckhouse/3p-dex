@@ -23,6 +23,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/dexidp/dex/connector"
+	dexcel "github.com/dexidp/dex/pkg/cel"
 	"github.com/dexidp/dex/server/internal"
 	"github.com/dexidp/dex/storage"
 )
@@ -404,6 +405,18 @@ func (s *Server) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
 			s.logger.ErrorContext(r.Context(), "failed login attempt: Invalid credentials.", "user", username)
 			return
 		}
+
+		if denied, msg, err := s.evaluateAuthPolicies(r.Context(), identity, authReq); err != nil {
+			s.logger.ErrorContext(r.Context(), "auth policy evaluation failed", "err", err)
+			s.renderError(r, w, http.StatusInternalServerError, ErrMsgAuthenticationFailed)
+			return
+		} else if denied {
+			s.logger.InfoContext(r.Context(), "auth policy denied login",
+				"msg", msg, "connector_id", authReq.ConnectorID, "client_id", authReq.ClientID)
+			s.renderError(r, w, http.StatusForbidden, msg)
+			return
+		}
+
 		redirectURL, canSkipApproval, err := s.finalizeLogin(r.Context(), identity, authReq, conn.Connector)
 		if err != nil {
 			s.logger.ErrorContext(r.Context(), "failed to finalize login", "err", err)
@@ -506,6 +519,17 @@ func (s *Server) handleConnectorCallback(w http.ResponseWriter, r *http.Request)
 		} else {
 			s.renderError(r, w, http.StatusInternalServerError, ErrMsgAuthenticationFailed)
 		}
+		return
+	}
+
+	if denied, msg, err := s.evaluateAuthPolicies(ctx, identity, authReq); err != nil {
+		s.logger.ErrorContext(r.Context(), "auth policy evaluation failed", "err", err)
+		s.renderError(r, w, http.StatusInternalServerError, ErrMsgAuthenticationFailed)
+		return
+	} else if denied {
+		s.logger.InfoContext(r.Context(), "auth policy denied login",
+			"msg", msg, "connector_id", authReq.ConnectorID, "client_id", authReq.ClientID)
+		s.renderError(r, w, http.StatusForbidden, msg)
 		return
 	}
 
@@ -1625,4 +1649,80 @@ func usernamePrompt(conn connector.PasswordConnector) string {
 		return attr
 	}
 	return "Username"
+}
+
+// evaluateAuthPolicies evaluates global and per-client auth policies against the identity.
+// Returns (denied bool, message string, err error).
+func (s *Server) evaluateAuthPolicies(ctx context.Context, identity connector.Identity, authReq storage.AuthRequest) (bool, string, error) {
+	identityMap := dexcel.IdentityFromConnector(identity)
+	requestMap := dexcel.RequestFromContext(dexcel.RequestContext{
+		ClientID:    authReq.ClientID,
+		ConnectorID: authReq.ConnectorID,
+		Scopes:      authReq.Scopes,
+		RedirectURI: authReq.RedirectURI,
+	})
+
+	// Evaluate global policies first.
+	if denied, msg, err := EvaluateAuthPolicy(ctx, s.globalAuthPolicy, identityMap, requestMap); err != nil {
+		return false, "", fmt.Errorf("global auth policy: %w", err)
+	} else if denied {
+		return true, msg, nil
+	}
+
+	// Evaluate per-client policies.
+	clientPolicies, err := s.getClientAuthPolicies(ctx, authReq.ClientID)
+	if err != nil {
+		return false, "", fmt.Errorf("client auth policy: %w", err)
+	}
+
+	if denied, msg, err := EvaluateAuthPolicy(ctx, clientPolicies, identityMap, requestMap); err != nil {
+		return false, "", fmt.Errorf("client auth policy evaluation: %w", err)
+	} else if denied {
+		return true, msg, nil
+	}
+
+	return false, "", nil
+}
+
+// getClientAuthPolicies returns compiled policies for the given client, compiling on first access.
+func (s *Server) getClientAuthPolicies(ctx context.Context, clientID string) ([]CompiledAuthPolicy, error) {
+	if clientID == "" {
+		return nil, nil
+	}
+
+	s.mu.Lock()
+	if policies, ok := s.clientAuthPolicies[clientID]; ok {
+		s.mu.Unlock()
+		return policies, nil
+	}
+	s.mu.Unlock()
+
+	client, err := s.storage.GetClient(ctx, clientID)
+	if err != nil {
+		if err == storage.ErrNotFound {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("getting client %q: %w", clientID, err)
+	}
+
+	if len(client.AuthPolicy) == 0 {
+		return nil, nil
+	}
+
+	policyVars := append(dexcel.IdentityVariables(), dexcel.RequestVariables()...)
+	compiler, err := dexcel.NewCompiler(policyVars)
+	if err != nil {
+		return nil, fmt.Errorf("creating compiler for client %q: %w", clientID, err)
+	}
+
+	compiled, err := CompileAuthPolicies(compiler, client.AuthPolicy)
+	if err != nil {
+		return nil, fmt.Errorf("compiling policies for client %q: %w", clientID, err)
+	}
+
+	s.mu.Lock()
+	s.clientAuthPolicies[clientID] = compiled
+	s.mu.Unlock()
+
+	return compiled, nil
 }
