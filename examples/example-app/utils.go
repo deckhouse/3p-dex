@@ -145,6 +145,11 @@ func parseAndRenderToken(w http.ResponseWriter, r *http.Request, a *app, token *
 		}
 	}
 
+	// Persist last token for session-aware index page and logout.
+	var claims userClaims
+	_ = idToken.Claims(&claims)
+	a.setSilentAuthResult(&claims, rawIDToken)
+
 	buf, err := encodeToken(idToken)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

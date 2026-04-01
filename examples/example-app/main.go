@@ -15,7 +15,17 @@ import (
 	"golang.org/x/oauth2"
 )
 
-const exampleAppState = "I wish to wash my irish wristwatch"
+const (
+	exampleAppState = "I wish to wash my irish wristwatch"
+	silentAuthState = "silent-auth-check"
+)
+
+type userClaims struct {
+	Subject           string `json:"sub"`
+	Name              string `json:"name"`
+	Email             string `json:"email"`
+	PreferredUsername string `json:"preferred_username"`
+}
 
 var (
 	codeVerifier  string
@@ -32,6 +42,7 @@ type app struct {
 	clientSecret string
 	pkce         bool
 	redirectURI  string
+	sessionAware bool
 
 	verifier        *oidc.IDTokenVerifier
 	provider        *oidc.Provider
@@ -42,6 +53,15 @@ type app struct {
 	offlineAsScope bool
 
 	client *http.Client
+
+	// Set once at startup.
+	endSessionEndpoint string
+
+	// Silent auth state, protected by mu.
+	mu             sync.RWMutex
+	sessionChecked bool
+	lastIDToken    string
+	lastUserClaims *userClaims
 
 	// Device flow state
 	// Only one session is possible at a time
@@ -118,11 +138,13 @@ func cmd() *cobra.Command {
 				// What scopes does a provider support?
 				//
 				// See: https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
-				ScopesSupported []string `json:"scopes_supported"`
+				ScopesSupported    []string `json:"scopes_supported"`
+				EndSessionEndpoint string   `json:"end_session_endpoint"`
 			}
 			if err := provider.Claims(&s); err != nil {
 				return fmt.Errorf("failed to parse provider scopes_supported: %v", err)
 			}
+			a.endSessionEndpoint = s.EndSessionEndpoint
 
 			if len(s.ScopesSupported) == 0 {
 				// scopes_supported is a "RECOMMENDED" discovery claim, not a required
@@ -153,6 +175,7 @@ func cmd() *cobra.Command {
 			http.HandleFunc("/device/poll", a.handleDevicePoll)
 			http.HandleFunc("/device/result", a.handleDeviceResult)
 			http.HandleFunc("/userinfo", a.handleUserInfo)
+			http.HandleFunc("/app-logout", a.handleAppLogout)
 			http.HandleFunc(u.Path, a.handleCallback)
 
 			switch listenURL.Scheme {
@@ -177,6 +200,7 @@ func cmd() *cobra.Command {
 	c.Flags().StringVar(&tlsKey, "tls-key", "", "Private key for the HTTPS cert.")
 	c.Flags().StringVar(&rootCAs, "issuer-root-ca", "", "Root certificate authorities for the issuer. Defaults to host certs.")
 	c.Flags().BoolVar(&debug, "debug", false, "Print all request and responses from the OpenID Connect issuer.")
+	c.Flags().BoolVar(&a.sessionAware, "session-aware", false, "Check Dex session on index page via prompt=none and show logout button.")
 	return &c
 }
 

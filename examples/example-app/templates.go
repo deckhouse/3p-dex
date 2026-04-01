@@ -69,6 +69,9 @@ func renderDevice(w http.ResponseWriter, data devicePageData) {
 type indexPageData struct {
 	ScopesSupported []string
 	LogoURI         string
+	User            *userClaims
+	NotLoggedIn     bool
+	LogoutURL       string
 }
 
 type devicePageData struct {
