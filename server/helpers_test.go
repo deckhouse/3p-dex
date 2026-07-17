@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/dexidp/dex/connector"
+	"github.com/dexidp/dex/server/authflow"
 	"github.com/dexidp/dex/server/connectors"
 	"github.com/dexidp/dex/storage"
 )
@@ -146,3 +147,7 @@ func (m *mockSAMLRefreshConnector) HandlePOST(s connector.Scopes, samlResponse, 
 func (m *mockSAMLRefreshConnector) Refresh(ctx context.Context, s connector.Scopes, ident connector.Identity) (connector.Identity, error) {
 	return m.refreshIdentity, nil
 }
+
+// scopesCoveredByConsent re-exports the authflow helper for tests that still
+// live in the server package.
+var scopesCoveredByConsent = authflow.ScopesCoveredByConsent

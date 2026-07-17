@@ -1,4 +1,4 @@
-package server
+package authflow
 
 import (
 	"crypto/rand"
@@ -129,7 +129,7 @@ func TestBuildWebAuthnUser(t *testing.T) {
 }
 
 func TestCompleteMFAStep(t *testing.T) {
-	httpServer, server := newTestServer(t, func(c *Config) {
+	httpServer, server := newTestHandler(t, func(c *Config) {
 		c.SessionConfig = &SessionConfig{AbsoluteLifetime: time.Hour, ValidIfNotUsedFor: time.Hour}
 
 		provider, err := NewWebAuthnProvider("Test", "", nil, "", "",
@@ -186,7 +186,7 @@ func TestCompleteMFAStep(t *testing.T) {
 }
 
 func TestWebAuthnHandlersMissingHMAC(t *testing.T) {
-	httpServer, server := newTestServer(t, func(c *Config) {
+	httpServer, server := newTestHandler(t, func(c *Config) {
 		c.SessionConfig = &SessionConfig{AbsoluteLifetime: time.Hour, ValidIfNotUsedFor: time.Hour}
 	})
 	defer httpServer.Close()
@@ -210,7 +210,7 @@ func TestWebAuthnHandlersMissingHMAC(t *testing.T) {
 }
 
 func TestWebAuthnVerifyPageRender(t *testing.T) {
-	httpServer, server := newTestServer(t, func(c *Config) {
+	httpServer, server := newTestHandler(t, func(c *Config) {
 		c.SessionConfig = &SessionConfig{AbsoluteLifetime: time.Hour, ValidIfNotUsedFor: time.Hour}
 
 		provider, err := NewWebAuthnProvider("Test", "", nil, "", "",

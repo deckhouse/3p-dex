@@ -1,4 +1,4 @@
-package server
+package authflow
 
 import (
 	"crypto"
@@ -20,14 +20,14 @@ import (
 	"github.com/dexidp/dex/storage/memory"
 )
 
-func newTestSessionServer(t *testing.T) *Server {
+func newTestSessionServer(t *testing.T) *Handler {
 	t.Helper()
 
 	now := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
 	issuerURL, err := url.Parse("https://example.com/dex")
 	require.NoError(t, err)
 
-	s := &Server{
+	s := &Handler{
 		storage: memory.New(nil),
 		logger:  slog.Default(),
 		now:     func() time.Time { return now },
@@ -38,7 +38,7 @@ func newTestSessionServer(t *testing.T) *Server {
 		},
 		issuerURL: *issuerURL,
 	}
-	s.connectors = connectors.NewCache(s.storage, s.resolveConnector)
+	s.connectors = connectors.NewCache(s.storage, testResolveConnector)
 	return s
 }
 
@@ -431,7 +431,7 @@ func TestCreateOrUpdateAuthSession(t *testing.T) {
 }
 
 // setupSessionLoginFixture creates the necessary storage objects for trySessionLogin tests.
-func setupSessionLoginFixture(t *testing.T, s *Server) storage.AuthRequest {
+func setupSessionLoginFixture(t *testing.T, s *Handler) storage.AuthRequest {
 	t.Helper()
 	ctx := t.Context()
 	now := s.now()
@@ -634,7 +634,7 @@ func TestTrySessionLogin(t *testing.T) {
 
 // setupSessionWithIdentity creates an AuthSession, UserIdentity, and AuthRequest in storage
 // for use in trySessionLogin tests. Returns the authReq.
-func setupSessionWithIdentity(t *testing.T, s *Server, now time.Time, lastLogin time.Time) storage.AuthRequest {
+func setupSessionWithIdentity(t *testing.T, s *Handler, now time.Time, lastLogin time.Time) storage.AuthRequest {
 	t.Helper()
 	ctx := t.Context()
 	nonce := "test-nonce"
@@ -1365,7 +1365,7 @@ func TestTrySessionLogin_SSO(t *testing.T) {
 func TestFinishSessionLogin_MFA(t *testing.T) {
 	ctx := t.Context()
 
-	setupMFAFixture := func(t *testing.T, mfaProviders map[string]MFAProvider, clientMFAChain []string) (*Server, storage.AuthRequest) {
+	setupMFAFixture := func(t *testing.T, mfaProviders map[string]MFAProvider, clientMFAChain []string) (*Handler, storage.AuthRequest) {
 		t.Helper()
 		s := newTestSessionServer(t)
 		s.skipApproval = true
@@ -1683,7 +1683,7 @@ func TestSSO_ConsentAndMFA(t *testing.T) {
 	ctx := t.Context()
 
 	// setupSSOFixture creates a two-client SSO scenario where client-a shares with client-b.
-	setupSSOFixture := func(t *testing.T, s *Server, consentsForB []string) storage.AuthRequest {
+	setupSSOFixture := func(t *testing.T, s *Handler, consentsForB []string) storage.AuthRequest {
 		t.Helper()
 		now := s.now()
 
@@ -1968,7 +1968,7 @@ func TestIdleExpiryExtension(t *testing.T) {
 func TestSSO_Unidirectional(t *testing.T) {
 	ctx := t.Context()
 
-	setup := func(t *testing.T, s *Server, loginClient, targetClient string) (storage.AuthRequest, *storage.AuthSession) {
+	setup := func(t *testing.T, s *Handler, loginClient, targetClient string) (storage.AuthRequest, *storage.AuthSession) {
 		t.Helper()
 		now := s.now()
 
@@ -2112,19 +2112,19 @@ func TestSSO_TransitiveTrustChain(t *testing.T) {
 // returns the correct value based on session configuration.
 func TestRememberMeDefault(t *testing.T) {
 	t.Run("sessions disabled returns nil", func(t *testing.T) {
-		s := &Server{sessionConfig: nil}
+		s := &Handler{sessionConfig: nil}
 		assert.Nil(t, s.rememberMeDefault())
 	})
 
 	t.Run("default false", func(t *testing.T) {
-		s := &Server{sessionConfig: &SessionConfig{RememberMeCheckedByDefault: false}}
+		s := &Handler{sessionConfig: &SessionConfig{RememberMeCheckedByDefault: false}}
 		v := s.rememberMeDefault()
 		require.NotNil(t, v)
 		assert.False(t, *v)
 	})
 
 	t.Run("default true", func(t *testing.T) {
-		s := &Server{sessionConfig: &SessionConfig{RememberMeCheckedByDefault: true}}
+		s := &Handler{sessionConfig: &SessionConfig{RememberMeCheckedByDefault: true}}
 		v := s.rememberMeDefault()
 		require.NotNil(t, v)
 		assert.True(t, *v)

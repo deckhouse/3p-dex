@@ -39,6 +39,7 @@ import (
 	"github.com/dexidp/dex/pkg/featureflags"
 	"github.com/dexidp/dex/server"
 	"github.com/dexidp/dex/server/apiserver"
+	"github.com/dexidp/dex/server/authflow"
 	"github.com/dexidp/dex/server/connectors"
 	"github.com/dexidp/dex/server/signer"
 	"github.com/dexidp/dex/server/tokens"
@@ -835,12 +836,12 @@ func parseSessionConfig(s *Sessions) (*server.SessionConfig, error) {
 	return sc, nil
 }
 
-func buildMFAProviders(authenticators []MFAAuthenticator, issuerURL string, logger *slog.Logger) map[string]server.MFAProvider {
+func buildMFAProviders(authenticators []MFAAuthenticator, issuerURL string, logger *slog.Logger) map[string]authflow.MFAProvider {
 	if len(authenticators) == 0 {
 		return nil
 	}
 
-	providers := make(map[string]server.MFAProvider, len(authenticators))
+	providers := make(map[string]authflow.MFAProvider, len(authenticators))
 	for _, auth := range authenticators {
 		switch auth.Type {
 		case "TOTP":
@@ -849,7 +850,7 @@ func buildMFAProviders(authenticators []MFAAuthenticator, issuerURL string, logg
 				logger.Error("failed to parse TOTP config", "id", auth.ID, "err", err)
 				continue
 			}
-			providers[auth.ID] = server.NewTOTPProvider(cfg.Issuer, auth.ConnectorTypes)
+			providers[auth.ID] = authflow.NewTOTPProvider(cfg.Issuer, auth.ConnectorTypes)
 			logger.Info("MFA authenticator configured", "id", auth.ID, "type", auth.Type)
 		case "WebAuthn":
 			var cfg WebAuthnConfig
@@ -857,7 +858,7 @@ func buildMFAProviders(authenticators []MFAAuthenticator, issuerURL string, logg
 				logger.Error("failed to parse WebAuthn config", "id", auth.ID, "err", err)
 				continue
 			}
-			provider, err := server.NewWebAuthnProvider(cfg.RPDisplayName, cfg.RPID, cfg.RPOrigins,
+			provider, err := authflow.NewWebAuthnProvider(cfg.RPDisplayName, cfg.RPID, cfg.RPOrigins,
 				cfg.AttestationPreference, cfg.Timeout, issuerURL, auth.ConnectorTypes)
 			if err != nil {
 				logger.Error("failed to create WebAuthn provider", "id", auth.ID, "err", err)

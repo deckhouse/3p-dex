@@ -116,7 +116,7 @@ func TestSkipApprovalWithExistingConsent(t *testing.T) {
 
 			rr := httptest.NewRecorder()
 			reqPath := fmt.Sprintf("/callback/%s?state=%s", connID, authReqID)
-			s.handleConnectorCallback(rr, httptest.NewRequest("GET", reqPath, nil))
+			s.ServeHTTP(rr, httptest.NewRequest("GET", reqPath, nil))
 
 			require.Equal(t, 303, rr.Code)
 			cb, err := url.Parse(rr.Result().Header.Get("Location"))

@@ -1,4 +1,4 @@
-package server
+package authflow
 
 import (
 	"bytes"
@@ -117,42 +117,42 @@ type mfaRequestContext struct {
 
 // validateMFARequest performs common MFA request validation: HMAC check, auth request
 // lookup, user identity lookup, and approval URL generation.
-func (s *Server) validateMFARequest(w http.ResponseWriter, r *http.Request) (*mfaRequestContext, bool) {
+func (h *Handler) validateMFARequest(w http.ResponseWriter, r *http.Request) (*mfaRequestContext, bool) {
 	macEncoded := r.FormValue("hmac")
 	if macEncoded == "" {
-		s.renderError(r, w, http.StatusUnauthorized, "Unauthorized request.")
+		h.renderError(r, w, http.StatusUnauthorized, "Unauthorized request.")
 		return nil, false
 	}
 
 	ctx := r.Context()
 
-	authReq, err := s.storage.GetAuthRequest(ctx, r.FormValue("req"))
+	authReq, err := h.storage.GetAuthRequest(ctx, r.FormValue("req"))
 	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to get auth request", "err", err)
-		s.renderError(r, w, http.StatusInternalServerError, "Database error.")
+		h.logger.ErrorContext(ctx, "failed to get auth request", "err", err)
+		h.renderError(r, w, http.StatusInternalServerError, "Database error.")
 		return nil, false
 	}
 	if !authReq.LoggedIn {
-		s.logger.ErrorContext(ctx, "auth request does not have an identity for MFA verification")
-		s.renderError(r, w, http.StatusInternalServerError, "Login process not yet finalized.")
+		h.logger.ErrorContext(ctx, "auth request does not have an identity for MFA verification")
+		h.renderError(r, w, http.StatusInternalServerError, "Login process not yet finalized.")
 		return nil, false
 	}
 
 	authenticatorID := r.FormValue("authenticator")
 
 	if !internal.VerifyHMAC(authReq.HMACKey, macEncoded, authReq.ID, authenticatorID) {
-		s.renderError(r, w, http.StatusUnauthorized, "Unauthorized request.")
+		h.renderError(r, w, http.StatusUnauthorized, "Unauthorized request.")
 		return nil, false
 	}
 
-	identity, err := s.storage.GetUserIdentity(ctx, authReq.Claims.UserID, authReq.ConnectorID)
+	identity, err := h.storage.GetUserIdentity(ctx, authReq.Claims.UserID, authReq.ConnectorID)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to get user identity", "err", err)
-		s.renderError(r, w, http.StatusInternalServerError, "Database error.")
+		h.logger.ErrorContext(ctx, "failed to get user identity", "err", err)
+		h.renderError(r, w, http.StatusInternalServerError, "Database error.")
 		return nil, false
 	}
 
-	approvalURL := s.buildApprovalURL(authReq)
+	approvalURL := h.buildApprovalURL(authReq)
 
 	if authReq.MFAValidated {
 		http.Redirect(w, r, approvalURL, http.StatusSeeOther)
@@ -167,33 +167,33 @@ func (s *Server) validateMFARequest(w http.ResponseWriter, r *http.Request) (*mf
 	}, true
 }
 
-func (s *Server) handleTOTP(w http.ResponseWriter, r *http.Request) {
-	mfa, ok := s.validateMFARequest(w, r)
+func (h *Handler) handleTOTP(w http.ResponseWriter, r *http.Request) {
+	mfa, ok := h.validateMFARequest(w, r)
 	if !ok {
 		return
 	}
 
-	provider, ok := s.mfaProviders[mfa.authenticatorID]
+	provider, ok := h.mfaProviders[mfa.authenticatorID]
 	if !ok {
-		s.renderError(r, w, http.StatusBadRequest, "Unknown authenticator.")
+		h.renderError(r, w, http.StatusBadRequest, "Unknown authenticator.")
 		return
 	}
 	totpProvider, ok := provider.(*TOTPProvider)
 	if !ok {
-		s.renderError(r, w, http.StatusBadRequest, "Not a TOTP authenticator.")
+		h.renderError(r, w, http.StatusBadRequest, "Not a TOTP authenticator.")
 		return
 	}
 
-	s.handleTOTPVerify(w, r, r.Context(), mfa.authReq, mfa.identity, mfa.authenticatorID, totpProvider, mfa.approvalURL)
+	h.handleTOTPVerify(w, r, r.Context(), mfa.authReq, mfa.identity, mfa.authenticatorID, totpProvider, mfa.approvalURL)
 }
 
-func (s *Server) handleWebAuthn(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleWebAuthn(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		s.renderError(r, w, http.StatusMethodNotAllowed, "Unsupported request method.")
+		h.renderError(r, w, http.StatusMethodNotAllowed, "Unsupported request method.")
 		return
 	}
 
-	mfa, ok := s.validateMFARequest(w, r)
+	mfa, ok := h.validateMFARequest(w, r)
 	if !ok {
 		return
 	}
@@ -206,13 +206,13 @@ func (s *Server) handleWebAuthn(w http.ResponseWriter, r *http.Request) {
 		mode = "register"
 	}
 
-	if err := s.templates.WebAuthnVerify(r, w, mode, mfa.authenticatorID); err != nil {
-		s.logger.ErrorContext(r.Context(), "server template error", "err", err)
+	if err := h.templates.WebAuthnVerify(r, w, mode, mfa.authenticatorID); err != nil {
+		h.logger.ErrorContext(r.Context(), "server template error", "err", err)
 	}
 }
 
 // handleTOTPVerify handles TOTP enrollment and verification.
-func (s *Server) handleTOTPVerify(w http.ResponseWriter, r *http.Request, ctx context.Context,
+func (h *Handler) handleTOTPVerify(w http.ResponseWriter, r *http.Request, ctx context.Context,
 	authReq storage.AuthRequest, identity storage.UserIdentity,
 	authenticatorID string, totpProvider *TOTPProvider, returnURL string,
 ) {
@@ -226,8 +226,8 @@ func (s *Server) handleTOTPVerify(w http.ResponseWriter, r *http.Request, ctx co
 			// enrollment multiple times without completing it, old secrets accumulate.
 			generated, err := totpProvider.generate(authReq.ConnectorID, authReq.Claims.Email)
 			if err != nil {
-				s.logger.ErrorContext(ctx, "failed to generate TOTP key", "err", err)
-				s.renderError(r, w, http.StatusInternalServerError, "Internal server error.")
+				h.logger.ErrorContext(ctx, "failed to generate TOTP key", "err", err)
+				h.renderError(r, w, http.StatusInternalServerError, "Internal server error.")
 				return
 			}
 
@@ -236,23 +236,23 @@ func (s *Server) handleTOTPVerify(w http.ResponseWriter, r *http.Request, ctx co
 				Type:            "TOTP",
 				Secret:          generated.String(),
 				Confirmed:       false,
-				CreatedAt:       s.now(),
+				CreatedAt:       h.now(),
 			}
 
-			if err := s.storage.UpdateUserIdentity(ctx, authReq.Claims.UserID, authReq.ConnectorID, func(old storage.UserIdentity) (storage.UserIdentity, error) {
+			if err := h.storage.UpdateUserIdentity(ctx, authReq.Claims.UserID, authReq.ConnectorID, func(old storage.UserIdentity) (storage.UserIdentity, error) {
 				if old.MFASecrets == nil {
 					old.MFASecrets = make(map[string]*storage.MFASecret)
 				}
 				old.MFASecrets[authenticatorID] = secret
 				return old, nil
 			}); err != nil {
-				s.logger.ErrorContext(ctx, "failed to store MFA secret", "err", err)
-				s.renderError(r, w, http.StatusInternalServerError, "Internal server error.")
+				h.logger.ErrorContext(ctx, "failed to store MFA secret", "err", err)
+				h.renderError(r, w, http.StatusInternalServerError, "Internal server error.")
 				return
 			}
 		}
 
-		s.renderTOTPPage(secret, false, totpProvider.issuer, authReq.ConnectorID, w, r)
+		h.renderTOTPPage(secret, false, totpProvider.issuer, authReq.ConnectorID, w, r)
 
 	case http.MethodPost:
 		// TODO(nabokihms): this endpoint should be protected with a rate limit (like the auth endpoint).
@@ -261,21 +261,21 @@ func (s *Server) handleTOTPVerify(w http.ResponseWriter, r *http.Request, ctx co
 		//
 		// For now the best way is to use external rate limiting solutions.
 		if secret == nil || secret.Secret == "" {
-			s.renderError(r, w, http.StatusBadRequest, "MFA not enrolled.")
+			h.renderError(r, w, http.StatusBadRequest, "MFA not enrolled.")
 			return
 		}
 
 		code := r.FormValue("totp")
 		generated, err := otp.NewKeyFromURL(secret.Secret)
 		if err != nil {
-			s.logger.ErrorContext(ctx, "failed to load TOTP key", "err", err)
-			s.renderError(r, w, http.StatusInternalServerError, "Internal server error.")
+			h.logger.ErrorContext(ctx, "failed to load TOTP key", "err", err)
+			h.renderError(r, w, http.StatusInternalServerError, "Internal server error.")
 			return
 		}
 
-		ok, counter := validateTOTPCode(generated.Secret(), code, s.now(), secret.LastUsedCounter)
+		ok, counter := validateTOTPCode(generated.Secret(), code, h.now(), secret.LastUsedCounter)
 		if !ok {
-			s.renderTOTPPage(secret, true, totpProvider.issuer, authReq.ConnectorID, w, r)
+			h.renderTOTPPage(secret, true, totpProvider.issuer, authReq.ConnectorID, w, r)
 			return
 		}
 
@@ -285,7 +285,7 @@ func (s *Server) handleTOTPVerify(w http.ResponseWriter, r *http.Request, ctx co
 		// requests with the same code cannot both succeed. This burn commits
 		// before completeMFAStep marks the challenge passed, so a code can never
 		// pass the challenge without its counter being recorded first.
-		if err := s.storage.UpdateUserIdentity(ctx, authReq.Claims.UserID, authReq.ConnectorID, func(old storage.UserIdentity) (storage.UserIdentity, error) {
+		if err := h.storage.UpdateUserIdentity(ctx, authReq.Claims.UserID, authReq.ConnectorID, func(old storage.UserIdentity) (storage.UserIdentity, error) {
 			sec := old.MFASecrets[authenticatorID]
 			if sec == nil {
 				return old, errTOTPNotEnrolled
@@ -298,18 +298,18 @@ func (s *Server) handleTOTPVerify(w http.ResponseWriter, r *http.Request, ctx co
 			return old, nil
 		}); err != nil {
 			if errors.Is(err, errTOTPReplay) || errors.Is(err, errTOTPNotEnrolled) {
-				s.renderTOTPPage(secret, true, totpProvider.issuer, authReq.ConnectorID, w, r)
+				h.renderTOTPPage(secret, true, totpProvider.issuer, authReq.ConnectorID, w, r)
 				return
 			}
-			s.logger.ErrorContext(ctx, "failed to update MFA secret", "err", err)
-			s.renderError(r, w, http.StatusInternalServerError, "Internal server error.")
+			h.logger.ErrorContext(ctx, "failed to update MFA secret", "err", err)
+			h.renderError(r, w, http.StatusInternalServerError, "Internal server error.")
 			return
 		}
 
-		redirectURL, err := s.completeMFAStep(ctx, authReq, authenticatorID)
+		redirectURL, err := h.completeMFAStep(ctx, authReq, authenticatorID)
 		if err != nil {
-			s.logger.ErrorContext(ctx, "failed to complete MFA step", "err", err)
-			s.renderError(r, w, http.StatusInternalServerError, "Internal server error.")
+			h.logger.ErrorContext(ctx, "failed to complete MFA step", "err", err)
+			h.renderError(r, w, http.StatusInternalServerError, "Internal server error.")
 			return
 		}
 
@@ -318,11 +318,11 @@ func (s *Server) handleTOTPVerify(w http.ResponseWriter, r *http.Request, ctx co
 		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 
 	default:
-		s.renderError(r, w, http.StatusBadRequest, "Unsupported request method.")
+		h.renderError(r, w, http.StatusBadRequest, "Unsupported request method.")
 	}
 }
 
-func (s *Server) renderTOTPPage(secret *storage.MFASecret, lastFail bool, issuer, connectorID string, w http.ResponseWriter, r *http.Request) {
+func (h *Handler) renderTOTPPage(secret *storage.MFASecret, lastFail bool, issuer, connectorID string, w http.ResponseWriter, r *http.Request) {
 	// Prevent browser from caching the TOTP page (contains QR code with secret).
 	w.Header().Set("Cache-Control", "no-store")
 	var qrCode string
@@ -330,13 +330,13 @@ func (s *Server) renderTOTPPage(secret *storage.MFASecret, lastFail bool, issuer
 		var err error
 		qrCode, err = generateTOTPQRCode(secret.Secret)
 		if err != nil {
-			s.logger.ErrorContext(r.Context(), "failed to generate QR code", "err", err)
-			s.renderError(r, w, http.StatusInternalServerError, "Internal server error.")
+			h.logger.ErrorContext(r.Context(), "failed to generate QR code", "err", err)
+			h.renderError(r, w, http.StatusInternalServerError, "Internal server error.")
 			return
 		}
 	}
-	if err := s.templates.TOTPVerify(r, w, r.URL.String(), issuer, connectorID, qrCode, lastFail); err != nil {
-		s.logger.ErrorContext(r.Context(), "server template error", "err", err)
+	if err := h.templates.TOTPVerify(r, w, r.URL.String(), issuer, connectorID, qrCode, lastFail); err != nil {
+		h.logger.ErrorContext(r.Context(), "server template error", "err", err)
 	}
 }
 
@@ -362,12 +362,12 @@ func generateTOTPQRCode(keyURL string) (string, error) {
 // mfaChainForClient returns the MFA chain for a client filtered by connector type,
 // falling back to the server's defaultMFAChain if the client has none.
 // Returns nil if no MFA is configured/applicable.
-func (s *Server) mfaChainForClient(ctx context.Context, clientID, connectorID string) ([]string, error) {
-	if len(s.mfaProviders) == 0 {
+func (h *Handler) mfaChainForClient(ctx context.Context, clientID, connectorID string) ([]string, error) {
+	if len(h.mfaProviders) == 0 {
 		return nil, nil
 	}
 
-	client, err := s.storage.GetClient(ctx, clientID)
+	client, err := h.storage.GetClient(ctx, clientID)
 	if err != nil {
 		return nil, err
 	}
@@ -376,18 +376,18 @@ func (s *Server) mfaChainForClient(ctx context.Context, clientID, connectorID st
 	// Explicit empty slice ([]string{}) means "no MFA" — don't fall back.
 	source := client.MFAChain
 	if source == nil {
-		source = s.defaultMFAChain
+		source = h.defaultMFAChain
 	}
 
 	// Resolve connector type from connector ID.
-	connectorType, err := s.getConnectorType(ctx, connectorID)
+	connectorType, err := h.getConnectorType(ctx, connectorID)
 	if err != nil {
 		return nil, err
 	}
 
 	var chain []string
 	for _, authID := range source {
-		provider, ok := s.mfaProviders[authID]
+		provider, ok := h.mfaProviders[authID]
 		if ok && provider.EnabledForConnectorType(connectorType) {
 			chain = append(chain, authID)
 		}
@@ -396,8 +396,8 @@ func (s *Server) mfaChainForClient(ctx context.Context, clientID, connectorID st
 }
 
 // getConnectorType returns the type of the connector with the given ID.
-func (s *Server) getConnectorType(ctx context.Context, connectorID string) (string, error) {
-	conn, err := s.connectors.Get(ctx, connectorID)
+func (h *Handler) getConnectorType(ctx context.Context, connectorID string) (string, error) {
+	conn, err := h.connectors.Get(ctx, connectorID)
 	if err != nil {
 		return "", fmt.Errorf("get connector %q: %w", connectorID, err)
 	}
@@ -405,8 +405,8 @@ func (s *Server) getConnectorType(ctx context.Context, connectorID string) (stri
 }
 
 // mfaPagePath returns the page URL path for the given MFA provider type.
-func (s *Server) mfaPagePath(authenticatorID string) string {
-	provider, ok := s.mfaProviders[authenticatorID]
+func (h *Handler) mfaPagePath(authenticatorID string) string {
+	provider, ok := h.mfaProviders[authenticatorID]
 	if ok && provider.Type() == "WebAuthn" {
 		return "/mfa/webauthn"
 	}
@@ -415,8 +415,8 @@ func (s *Server) mfaPagePath(authenticatorID string) string {
 
 // completeMFAStep checks for the next authenticator in the MFA chain and either
 // returns the URL for the next step or marks MFA as validated and returns the approval URL.
-func (s *Server) completeMFAStep(ctx context.Context, authReq storage.AuthRequest, authenticatorID string) (string, error) {
-	mfaChain, err := s.mfaChainForClient(ctx, authReq.ClientID, authReq.ConnectorID)
+func (h *Handler) completeMFAStep(ctx context.Context, authReq storage.AuthRequest, authenticatorID string) (string, error) {
+	mfaChain, err := h.mfaChainForClient(ctx, authReq.ClientID, authReq.ConnectorID)
 	if err != nil {
 		return "", fmt.Errorf("get MFA chain: %w", err)
 	}
@@ -431,25 +431,25 @@ func (s *Server) completeMFAStep(ctx context.Context, authReq storage.AuthReques
 	}
 
 	if nextAuthenticator != "" {
-		return s.buildMFARedirectURL(authReq, nextAuthenticator), nil
+		return h.buildMFARedirectURL(authReq, nextAuthenticator), nil
 	}
 
 	// All authenticators completed — mark as validated.
-	if err := s.storage.UpdateAuthRequest(ctx, authReq.ID, func(old storage.AuthRequest) (storage.AuthRequest, error) {
+	if err := h.storage.UpdateAuthRequest(ctx, authReq.ID, func(old storage.AuthRequest) (storage.AuthRequest, error) {
 		old.MFAValidated = true
 		return old, nil
 	}); err != nil {
 		return "", fmt.Errorf("update auth request: %w", err)
 	}
 
-	return s.buildApprovalURL(authReq), nil
+	return h.buildApprovalURL(authReq), nil
 }
 
 // buildMFARedirectURL builds an HMAC-protected redirect URL for the given authenticator.
-func (s *Server) buildMFARedirectURL(authReq storage.AuthRequest, authenticatorID string) string {
+func (h *Handler) buildMFARedirectURL(authReq storage.AuthRequest, authenticatorID string) string {
 	v := url.Values{}
 	v.Set("req", authReq.ID)
 	v.Set("hmac", internal.ComputeHMAC(authReq.HMACKey, authReq.ID, authenticatorID))
 	v.Set("authenticator", authenticatorID)
-	return s.absPath(s.mfaPagePath(authenticatorID)) + "?" + v.Encode()
+	return h.absPath(h.mfaPagePath(authenticatorID)) + "?" + v.Encode()
 }

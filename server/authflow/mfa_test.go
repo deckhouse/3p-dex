@@ -1,4 +1,4 @@
-package server
+package authflow
 
 import (
 	"testing"
@@ -78,7 +78,7 @@ func TestBuildWebAuthnUserDropsCloneWarning(t *testing.T) {
 func TestFinalizeLoginBlockedAccount(t *testing.T) {
 	t.Setenv("DEX_SESSIONS_ENABLED", "true")
 
-	httpServer, server := newTestServer(t, func(c *Config) {
+	httpServer, server := newTestHandler(t, func(c *Config) {
 		c.SessionConfig = &SessionConfig{AbsoluteLifetime: time.Hour, ValidIfNotUsedFor: time.Hour}
 	})
 	defer httpServer.Close()
